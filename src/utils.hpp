@@ -17,17 +17,26 @@ constexpr float SAMPLE_RATE_F = static_cast<float>(SAMPLE_RATE);
 
 constexpr size_t SAMPLES_PER_BLOCK = 400;
 constexpr size_t SAMPLES_SHIFT = 200;
-constexpr std::array<size_t, 20> FREQUENCIES = {
-    400,  800,  1200, 1600, 2000, 2400, 2800, 3200, 3600, 4000,
-    4400, 4800, 5200, 5600, 6000, 6400, 6800, 7200, 7600, 8000,
-};
-constexpr size_t NUM_FREQUENCIES = FREQUENCIES.size();
+constexpr size_t FREQUENCY_STEP = SAMPLE_RATE / SAMPLES_PER_BLOCK;
+constexpr size_t NUM_FREQUENCIES = (SAMPLE_RATE / 2) / FREQUENCY_STEP;
+constexpr size_t NUM_BANDS = 20;
+constexpr size_t FREQUENCIES_PER_BAND = NUM_FREQUENCIES / NUM_BANDS;
+static_assert(SAMPLE_RATE % SAMPLES_PER_BLOCK == 0);
+static_assert(NUM_FREQUENCIES % NUM_BANDS == 0);
+
+// 40, 80, ..., 8000 Hz. Each group of 10 frequencies forms one output band.
+constexpr auto FREQUENCIES = [] {
+  std::array<size_t, NUM_FREQUENCIES> frequencies{};
+  for (size_t i = 0; i < NUM_FREQUENCIES; ++i)
+    frequencies[i] = (i + 1) * FREQUENCY_STEP;
+  return frequencies;
+}();
 
 constexpr size_t NETWORK_IN_VALUES =
-    ((N_SAMPLES - SAMPLES_PER_BLOCK) / SAMPLES_SHIFT + 1) * NUM_FREQUENCIES;
+    ((N_SAMPLES - SAMPLES_PER_BLOCK) / SAMPLES_SHIFT + 1) * NUM_BANDS;
 
 [[gnu::always_inline]] constexpr size_t get_starting_padding(size_t chunk_idx) {
-  return NUM_FREQUENCIES * chunk_idx;
+  return NUM_BANDS * chunk_idx;
 }
 
 // --- Type aliasing ---
@@ -96,9 +105,9 @@ constexpr trig_t cos_constexpr(trig_t x) {
 
 // Compile time sin waves function for sample computing
 template <size_t FREQUENCY>
-consteval std::array<trig_t, N_SAMPLES> get_sin_input_const() {
-  std::array<trig_t, N_SAMPLES> res{};
-  for (size_t i = 0; i < N_SAMPLES; ++i) {
+consteval std::array<trig_t, SAMPLES_PER_BLOCK> get_sin_input_const() {
+  std::array<trig_t, SAMPLES_PER_BLOCK> res{};
+  for (size_t i = 0; i < SAMPLES_PER_BLOCK; ++i) {
     const size_t phase = (FREQUENCY * i) % SAMPLE_RATE;
     res[i] = sin_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
   }
@@ -107,9 +116,9 @@ consteval std::array<trig_t, N_SAMPLES> get_sin_input_const() {
 
 // Compile time cos waves function for sample computing
 template <size_t FREQUENCY>
-consteval std::array<trig_t, N_SAMPLES> get_cos_input_const() {
-  std::array<trig_t, N_SAMPLES> res{};
-  for (size_t i = 0; i < N_SAMPLES; ++i) {
+consteval std::array<trig_t, SAMPLES_PER_BLOCK> get_cos_input_const() {
+  std::array<trig_t, SAMPLES_PER_BLOCK> res{};
+  for (size_t i = 0; i < SAMPLES_PER_BLOCK; ++i) {
     const size_t phase = (FREQUENCY * i) % SAMPLE_RATE;
     res[i] = cos_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
   }

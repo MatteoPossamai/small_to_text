@@ -6,7 +6,7 @@
 
 class WavWeights {
   // buffer will look like
-  // Chunk_1_400, Chunk_1_800, ..., Chunk_2_400, ..., Chunk_N_8000
+  // Window 1 bands (40..400 Hz, 440..800 Hz, ...), then window 2 bands, ...
   std::array<output_t, NETWORK_IN_VALUES> input_data{};
   bool initialized = false;
 

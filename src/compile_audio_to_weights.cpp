@@ -4,6 +4,7 @@
 #include "wav_weights.hpp"
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <span>
@@ -54,8 +55,14 @@ crunck_file_data(WavFile &wf,
     const std::span<const input_t, SAMPLES_PER_BLOCK> samples(
         clip.data() + window_idx * SAMPLES_SHIFT, SAMPLES_PER_BLOCK);
     const auto start_idx = get_starting_padding(window_idx);
-    for (size_t j = 0; j < NUM_FREQUENCIES; ++j) {
-      buffer_out[start_idx + j] = COMPUTE_POINT_WAVE_TABLE[j](samples);
+    for (size_t band = 0; band < NUM_BANDS; ++band) {
+      trig_t energy = 0;
+      for (size_t j = 0; j < FREQUENCIES_PER_BAND; ++j) {
+        const auto frequency_idx = band * FREQUENCIES_PER_BAND + j;
+        const trig_t magnitude = COMPUTE_POINT_WAVE_TABLE[frequency_idx](samples);
+        energy += magnitude * magnitude;
+      }
+      buffer_out[start_idx + band] = static_cast<output_t>(std::sqrt(energy));
     }
   }
 }

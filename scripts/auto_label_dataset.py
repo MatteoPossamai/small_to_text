@@ -1,5 +1,4 @@
 #! /bin/python3
-import os
 import sys
 from pathlib import Path
 
@@ -21,22 +20,28 @@ if __name__ == "__main__":
         print("Usage: ./auto_label_dataset.py <PATH_TO_DATASET>")
         sys.exit(1)
 
-    dataset_base_location = sys.argv[1]
-    all_recordings: dict[str, list[str]] = {
-        os.path.basename(directory): [
-            filename for filename in files if not filename.endswith(".md")
-        ]
-        for directory, subdirectories, files in os.walk(dataset_base_location)
-        if not subdirectories
-    }
+    dataset_base_location = Path(sys.argv[1])
+
+    # This list already keeps recordings from the same person together.
+    scoring_files: set[str] = set()
+    with (dataset_base_location / "testing_list.txt").open(encoding="utf-8") as input:
+        for line in input:
+            scoring_files.add(line.strip())
 
     training: list[tuple[str, str]] = []
     scoring: list[tuple[str, str]] = []
 
-    for label, recordings in all_recordings.items():
-        training_samples = len(recordings) * 9 // 10
-        training.extend((filename, label) for filename in recordings[:training_samples])
-        scoring.extend((filename, label) for filename in recordings[training_samples:])
+    for label_dir in sorted(dataset_base_location.iterdir()):
+        if not label_dir.is_dir():
+            continue
+
+        for recording in sorted(label_dir.glob("*.wav")):
+            sample = (recording.name, label_dir.name)
+            relative_path = f"{label_dir.name}/{recording.name}"
+            if relative_path in scoring_files:
+                scoring.append(sample)
+            else:
+                training.append(sample)
 
     DATASET_DIR.mkdir(parents=True, exist_ok=True)
     write_dataset(DATASET_DIR / "training.txt", training)

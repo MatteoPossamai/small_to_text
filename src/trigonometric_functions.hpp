@@ -8,7 +8,7 @@
 template <size_t FREQUENCY>
 output_t
 compute_point_wave_point(std::span<const input_t, SAMPLES_PER_BLOCK> input_series) {
-  static_assert(FREQUENCY % 400 == 0);
+  static_assert(FREQUENCY % FREQUENCY_STEP == 0);
   static_assert(SAMPLES_PER_BLOCK % 4 == 0);
 
   constexpr auto sin_arr = get_sin_input_const<FREQUENCY>();

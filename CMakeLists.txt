@@ -19,3 +19,10 @@ target_compile_definitions(compile_audios PRIVATE
 target_compile_options(compile_audios PRIVATE
     -O3 -ffast-math -g
 )
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(encoding_tests tests/encoding.cpp)
+  target_compile_options(encoding_tests PRIVATE -O3 -g)
+  add_test(NAME encoding COMMAND encoding_tests)
+endif()
