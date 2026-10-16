@@ -11,8 +11,9 @@
 #include <tuple>
 
 // --- Constants ---
-constexpr size_t N_SAMPLES = 16000;
-constexpr float N_SAMPLES_F = static_cast<float>(N_SAMPLES);
+constexpr size_t SAMPLE_RATE = 16000; // Samples per second in the WAV.
+constexpr size_t N_SAMPLES = 16000;   // Fixed number of network input samples.
+constexpr float SAMPLE_RATE_F = static_cast<float>(SAMPLE_RATE);
 
 constexpr size_t SAMPLES_PER_BLOCK = 400;
 constexpr size_t SAMPLES_SHIFT = 200;
@@ -90,7 +91,7 @@ constexpr trig_t cos_constexpr(trig_t x) {
 }
 
 [[gnu::always_inline]] constexpr float get_time_from_idx(size_t tick) {
-  return tick / N_SAMPLES_F;
+  return tick / SAMPLE_RATE_F;
 }
 
 // Compile time sin waves function for sample computing
@@ -98,8 +99,8 @@ template <size_t FREQUENCY>
 consteval std::array<trig_t, N_SAMPLES> get_sin_input_const() {
   std::array<trig_t, N_SAMPLES> res{};
   for (size_t i = 0; i < N_SAMPLES; ++i) {
-    const size_t phase = (FREQUENCY * i) % N_SAMPLES;
-    res[i] = sin_constexpr(2 * std::numbers::pi_v<trig_t> * phase / N_SAMPLES);
+    const size_t phase = (FREQUENCY * i) % SAMPLE_RATE;
+    res[i] = sin_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
   }
   return res;
 }
@@ -109,8 +110,8 @@ template <size_t FREQUENCY>
 consteval std::array<trig_t, N_SAMPLES> get_cos_input_const() {
   std::array<trig_t, N_SAMPLES> res{};
   for (size_t i = 0; i < N_SAMPLES; ++i) {
-    const size_t phase = (FREQUENCY * i) % N_SAMPLES;
-    res[i] = cos_constexpr(2 * std::numbers::pi_v<trig_t> * phase / N_SAMPLES);
+    const size_t phase = (FREQUENCY * i) % SAMPLE_RATE;
+    res[i] = cos_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
   }
   return res;
 }

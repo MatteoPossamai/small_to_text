@@ -1,6 +1,8 @@
 #pragma once
 
 #include "utils.hpp"
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <stdexcept>
@@ -72,9 +74,11 @@ public:
         file.seekg(payload +
                    std::streamoff(4)); // sample rate is 4 bytes into fmt
         sample_rate_value = read_u32_le(file);
-        if (sample_rate_value != N_SAMPLES) {
-          throw std::runtime_error(
-              "The amount of samples is not a supported number.");
+        if (sample_rate_value != SAMPLE_RATE) {
+          throw std::runtime_error("Unsupported WAV sample rate: " +
+                                   std::to_string(sample_rate_value) +
+                                   " Hz (expected " +
+                                   std::to_string(SAMPLE_RATE) + " Hz)");
         }
         file.seekg(payload +
                    std::streamoff(12)); // block alignment is at byte 12
@@ -108,17 +112,54 @@ public:
     file.seekg(data_offset);
     if (!file)
       throw std::runtime_error("Could not seek to WAV data");
-    data_remaining = data_size;
+    data_remaining =
+        std::min<std::uint32_t>(data_size, N_SAMPLES * sizeof(std::int16_t));
+  }
+
+  void rewind_data(std::uint32_t byte_count) {
+    const auto readable_size =
+        std::min<std::uint32_t>(data_size, N_SAMPLES * sizeof(std::int16_t));
+    const auto bytes_read = readable_size - data_remaining;
+    if (byte_count > bytes_read)
+      throw std::runtime_error("Cannot rewind before WAV data");
+
+    file.clear();
+    file.seekg(-static_cast<std::streamoff>(byte_count), std::ios::cur);
+    if (!file)
+      throw std::runtime_error("Could not rewind WAV data");
+    data_remaining += byte_count;
   }
 
   std::streamsize read_data(char *buffer, std::streamsize size) {
-    if (size <= 0 || data_remaining == 0)
+    if (size <= 0 || data_remaining == 0 || file.eof())
       return 0;
     const auto remaining = static_cast<std::streamsize>(data_remaining);
     const auto count = size < remaining ? size : remaining;
     file.read(buffer, count);
     const auto bytes_read = file.gcount();
     data_remaining -= static_cast<std::uint32_t>(bytes_read);
+    if (file.bad())
+      throw std::runtime_error("Could not read WAV data");
     return bytes_read;
+  }
+
+  std::size_t samples_read() const {
+    const auto readable_size =
+        std::min<std::uint32_t>(data_size, N_SAMPLES * sizeof(std::int16_t));
+    return (readable_size - data_remaining) / sizeof(std::int16_t);
+  }
+
+  // Read at most 16,000 samples and fill missing samples with silence.
+  std::array<input_t, N_SAMPLES> read_clip() {
+    if (bytes_per_sample_frame_value != sizeof(std::int16_t))
+      throw std::runtime_error("Reading clips requires 16-bit mono WAV data");
+
+    std::array<char, N_SAMPLES * sizeof(std::int16_t)> raw{};
+    const auto bytes_read = read_data(raw.data(), raw.size());
+    std::array<input_t, N_SAMPLES> samples{};
+    const auto sample_count = bytes_read / sizeof(std::int16_t);
+    for (size_t i = 0; i < sample_count; ++i)
+      samples[i] = from_bytes_to_sample(raw.data() + i * sizeof(std::int16_t));
+    return samples;
   }
 };
