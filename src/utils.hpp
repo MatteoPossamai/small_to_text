@@ -18,7 +18,7 @@ constexpr float SAMPLE_RATE_F = static_cast<float>(SAMPLE_RATE);
 constexpr size_t SAMPLES_PER_BLOCK = 400;
 constexpr size_t SAMPLES_SHIFT = 200;
 constexpr std::array<size_t, 20> FREQUENCIES = {
-    400,  8000, 1200, 1600, 2000, 2400, 2800, 3200, 3600, 4000,
+    400,  800,  1200, 1600, 2000, 2400, 2800, 3200, 3600, 4000,
     4400, 4800, 5200, 5600, 6000, 6400, 6800, 7200, 7600, 8000,
 };
 constexpr size_t NUM_FREQUENCIES = FREQUENCIES.size();
