@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utils.hpp"
 #include <cstdint>
 #include <fstream>
 #include <stdexcept>
@@ -67,9 +68,15 @@ public:
       if (chunk_id == "fmt ") {
         if (chunk_size < 14)
           throw std::runtime_error("Invalid WAV file: fmt chunk is too small");
-        file.seekg(payload + std::streamoff(4)); // sample rate is 4 bytes into fmt
+        file.seekg(payload +
+                   std::streamoff(4)); // sample rate is 4 bytes into fmt
         sample_rate_value = read_u32_le(file);
-        file.seekg(payload + std::streamoff(12)); // block alignment is at byte 12
+        if (sample_rate_value != N_SAMPLES) {
+          throw std::runtime_error(
+              "The amount of samples is not a supported number.");
+        }
+        file.seekg(payload +
+                   std::streamoff(12)); // block alignment is at byte 12
         bytes_per_sample_frame_value = read_u16_le(file);
         found_fmt = true;
       } else if (chunk_id == "data" && !found_data) {
