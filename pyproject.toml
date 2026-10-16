@@ -1,0 +1,13 @@
+[project]
+name = "small-to-text"
+version = "0.1.0"
+requires-python = ">=3.13"
+
+authors = [
+    { name = "Matteo Possamai", email = "mpossamaim@gmail.com" },
+]
+
+dependencies = [
+  "numpy==2.5.4",
+  "matplotlib==3.11.2",
+]
