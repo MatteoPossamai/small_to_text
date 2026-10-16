@@ -25,6 +25,10 @@ constexpr size_t NUM_FREQUENCIES = FREQUENCIES.size();
 constexpr size_t NETWORK_IN_VALUES =
     ((N_SAMPLES - SAMPLES_PER_BLOCK) / SAMPLES_SHIFT + 1) * NUM_FREQUENCIES;
 
+[[gnu::always_inline]] constexpr size_t get_starting_padding(size_t chunk_idx) {
+  return NUM_FREQUENCIES * chunk_idx;
+}
+
 // --- Type aliasing ---
 using input_t = int32_t;
 using output_t = float_t;

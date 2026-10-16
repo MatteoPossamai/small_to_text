@@ -32,6 +32,7 @@ class WavFile {
   }
 
 public:
+  WavFile() = delete;
   explicit WavFile(const std::string &filename)
       : file(filename, std::ios::binary) {
     if (!file)
