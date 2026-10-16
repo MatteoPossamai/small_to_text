@@ -1,2 +1,4 @@
 build/
+weights/
+data/
 a.out

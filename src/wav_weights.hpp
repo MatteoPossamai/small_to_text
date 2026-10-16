@@ -1,5 +1,6 @@
 #include "utils.hpp"
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -28,6 +29,12 @@ public:
     if (!initialized) {
       return false;
     }
+
+    std::filesystem::path path(filename);
+    if (!path.parent_path().empty()) {
+      std::filesystem::create_directories(path.parent_path());
+    }
+
     std::ofstream file(filename, std::ios::binary);
     if (!file) {
       throw std::runtime_error("Could not open Dump file: " + filename);

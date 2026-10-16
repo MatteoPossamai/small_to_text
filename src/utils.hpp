@@ -3,7 +3,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <numbers>
+#include <optional>
+#include <queue>
+#include <string>
+#include <tuple>
 
 // --- Constants ---
 constexpr size_t N_SAMPLES = 16000;
@@ -105,3 +110,31 @@ consteval std::array<trig_t, N_SAMPLES> get_cos_input_const() {
   }
   return res;
 }
+
+template <typename T> class s_queue {
+  // Simple thread safe queue
+  // Producing is single threaded, consumption
+  // is parallel
+  std::mutex m{};
+  std::queue<T> queue{};
+
+public:
+  void put(T val) {
+    // No need to be safe on put, since
+    // is pre-populated with one producer, while no
+    // one is consuming
+    queue.push(val);
+  }
+
+  std::optional<T> pop() {
+    std::lock_guard<std::mutex> lk(m);
+    if (queue.size() > 0) {
+      auto res = queue.front();
+      queue.pop();
+      return res;
+    }
+    return std::nullopt;
+  }
+};
+
+using weights_queue_t = s_queue<std::tuple<std::string, std::string>>;
