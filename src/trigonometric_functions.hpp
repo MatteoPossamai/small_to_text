@@ -5,7 +5,7 @@
 // chunk, in an High Performance fashion
 template <size_t FREQUENCY>
 output_t
-compute_point_wave_point(const std::array<input_t, N_SAMPLES> &input_series) {
+compute_point_wave_point(const std::array<input_t, SAMPLES_PER_BLOCK> &input_series) {
   static_assert(FREQUENCY % 400 == 0);
   static_assert(N_SAMPLES % 4 == 0);
 

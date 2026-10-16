@@ -7,7 +7,7 @@
 class WavWeights {
   // buffer will look like
   // Chunk_1_400, Chunk_1_800, ..., Chunk_2_400, ..., Chunk_N_8000
-  std::array<input_t, NETWORK_IN_VALUES> input_data{};
+  std::array<output_t, NETWORK_IN_VALUES> input_data{};
   bool initialized = false;
 
 public:
@@ -49,12 +49,12 @@ public:
     return file.good();
   }
 
-  void from_buffer(const std::array<input_t, NETWORK_IN_VALUES> &buffer_in) {
+  void from_buffer(const std::array<output_t, NETWORK_IN_VALUES> &buffer_in) {
     input_data = buffer_in;
     initialized = true;
   }
 
-  const std::array<input_t, NETWORK_IN_VALUES> &data() const {
+  const std::array<output_t, NETWORK_IN_VALUES> &data() const {
     return input_data;
   }
 };

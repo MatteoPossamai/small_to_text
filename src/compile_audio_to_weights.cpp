@@ -1,4 +1,5 @@
 #include "utils.hpp"
+#include "wav_file.hpp"
 #include "wav_weights.hpp"
 #include <fstream>
 #include <iostream>
@@ -38,6 +39,13 @@ void enqueue_dataset(const std::string &metadata_file,
   }
 }
 
+[[gnu::always_inline]] inline void
+crunck_file_data(size_t start_point, WavFile &wf, char *f_buffer) {
+  for (size_t i = start_point; i < N_SAMPLES; i += 2) {
+    wf.read_data(f_buffer, SAMPLES_PER_BLOCK);
+  }
+}
+
 void thread_fn(weights_queue_t &work_queue) {
   auto val = work_queue.pop();
   while (val.has_value()) {
@@ -45,13 +53,19 @@ void thread_fn(weights_queue_t &work_queue) {
     auto source_file = get<0>(val.value());
     auto dest_file = get<1>(val.value());
     std::array<input_t, NETWORK_IN_VALUES> buffer{};
+    WavFile wf(source_file);
+    wf.seek_to_data();
+    std::array<output_t, NETWORK_IN_VALUES> buffer_out;
 
     // Actual work
-    // TODO: make the work
+    char f_buffer[SAMPLES_PER_BLOCK];
+    crunck_file_data(0, wf, f_buffer);
+    wf.seek_to_data();
+    wf.read_data(f_buffer, SAMPLES_SHIFT);
+    crunck_file_data(1, wf, f_buffer);
 
-    // Write output
     WavWeights ww{};
-    ww.from_buffer(std::move(buffer));
+    ww.from_buffer(std::move(buffer_out));
     ww.to_file(dest_file);
     val = work_queue.pop();
   }
