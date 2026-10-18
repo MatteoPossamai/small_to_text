@@ -17,6 +17,7 @@ if __name__ == "__main__":
             all_files.extend([str(s) for s in current_folder.glob("*.wav")])
 
     all_data = np.concatenate([np.fromfile(f, dtype="<i2") for f in all_files])
+    print(f"MAX: {all_data.max()}\nMIN: {all_data.min()}\nAVG: {all_data.mean()}")
 
     plt.hist(all_data, bins=100)
     plt.xlabel("Value")

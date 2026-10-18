@@ -1,4 +1,5 @@
 #include "utils.hpp"
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +10,7 @@ class WavWeights {
   // Window 1 bands (40..400 Hz, 440..800 Hz, ...), then window 2 bands, ...
   std::array<output_t, NETWORK_IN_VALUES> input_data{};
   bool initialized = false;
+  bool normalized = false;
 
 public:
   void from_file(const std::string &filename) {
@@ -25,6 +27,7 @@ public:
       throw std::runtime_error("WAV file too short: " + filename);
     }
     initialized = true;
+    normalized = false;
   }
 
   bool to_file(const std::string &filename) {
@@ -52,9 +55,31 @@ public:
   void from_buffer(const std::array<output_t, NETWORK_IN_VALUES> &buffer_in) {
     input_data = buffer_in;
     initialized = true;
+    normalized = false;
   }
 
   const std::array<output_t, NETWORK_IN_VALUES> &data() const {
     return input_data;
+  }
+
+  void normalize() {
+    if (!initialized || normalized)
+      return;
+
+    auto [min_it, max_it] =
+        std::minmax_element(input_data.begin(), input_data.end());
+
+    const auto min = *min_it;
+    const auto max = *max_it;
+
+    if (max == min) {
+      input_data.fill(0);
+    } else {
+      for (auto &element : input_data) {
+        element = (element - min) / (max - min);
+      }
+    }
+
+    normalized = true;
   }
 };
