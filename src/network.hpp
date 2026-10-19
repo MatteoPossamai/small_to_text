@@ -1,5 +1,7 @@
 #include "utils.hpp"
 #include <algorithm>
+#include <cmath>
+#include <random>
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N> class Network {
   // Input layer
@@ -15,22 +17,101 @@ template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N> class Network {
   std::array<output_t, OUT_N> norm_output_layer{};
 
   // Weights
-  std::array<std::array<output_t, IN_N>, IN_N> w0;
-  std::array<std::array<output_t, L1>, L1> w1;
-  std::array<std::array<output_t, L2>, L2> w2;
+  std::array<std::array<output_t, L1>, IN_N> w0;
+  std::array<std::array<output_t, L2>, L1> w1;
+  std::array<std::array<output_t, OUT_N>, L2> w2;
 
   [[gnu::always_inline]] inline output_t ReLU(output_t value) {
     return std::max(static_cast<output_t>(0), value);
   }
 
-  void normalize_output_layer(); // TODO: impl
+  void normalize_output_layer();
+
+  template <size_t X, size_t Y>
+  void matrix_mul(std::array<output_t, X> &inputs,
+                  std::array<std::array<output_t, Y>, X> &weights,
+                  std::array<output_t, Y> &res);
 
 public:
   Network() = default;
-  void load(std::array<output_t, IN_N> input); // TODO: impl
-  void forward_pass();                         // TODO: impl
+  void load(const std::array<output_t, IN_N> &input) { input_layer = input; }
+
+  void forward_pass();
+
+  void initialize_random_weights() {
+    std::random_device r;
+    std::default_random_engine generator(r());
+    std::uniform_int_distribution<size_t> distribution(0, 100);
+
+    for (auto &row : w0)
+      for (auto &el : row)
+        el = static_cast<output_t>(distribution(r));
+
+    for (auto &row : w1)
+      for (auto &el : row)
+        el = static_cast<output_t>(distribution(r));
+
+    for (auto &row : w2)
+      for (auto &el : row)
+        el = static_cast<output_t>(distribution(r));
+  }
+
+  void load_weights(std::array<std::array<output_t, L1>, IN_N> &w0_in,
+                    std::array<std::array<output_t, L2>, L1> &w1_in,
+                    std::array<std::array<output_t, OUT_N>, L2> &w2_in) {
+    w0 = w0_in;
+    w1 = w1_in;
+    w2 = w2_in;
+  }
 
   const std::array<output_t, OUT_N> &output() const {
-    return &norm_output_layer;
+    return norm_output_layer;
   }
 };
+
+template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
+void Network<IN_N, L1, L2, OUT_N>::normalize_output_layer() {
+  // Get the max and subtract it, to avoid overflow of the std::exp(x) call
+  const auto max = *std::max_element(output_layer.begin(), output_layer.end());
+  output_t softmax_sum = 0;
+
+  for (size_t i = 0; i < OUT_N; ++i) {
+    norm_output_layer[i] = std::exp(output_layer[i] - max);
+    softmax_sum += norm_output_layer[i];
+  }
+
+  for (auto &out : norm_output_layer) {
+    out /= softmax_sum;
+  }
+}
+
+template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
+template <size_t X, size_t Y>
+void Network<IN_N, L1, L2, OUT_N>::matrix_mul(
+    std::array<output_t, X> &inputs,
+    std::array<std::array<output_t, Y>, X> &weights,
+    std::array<output_t, Y> &res) {
+  for (size_t i = 0; i < Y; ++i) {
+    output_t total = 0;
+    for (size_t j = 0; j < X; ++j) {
+      total += inputs[j] * weights[j][i];
+    }
+    res[i] = total;
+  }
+}
+
+template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
+void Network<IN_N, L1, L2, OUT_N>::forward_pass() {
+  matrix_mul(input_layer, w0, layer1);
+  for (auto &value : layer1) {
+    value = ReLU(value);
+  }
+
+  matrix_mul(layer1, w1, layer2);
+  for (auto &value : layer2) {
+    value = ReLU(value);
+  }
+
+  matrix_mul(layer2, w2, output_layer);
+  normalize_output_layer();
+}
