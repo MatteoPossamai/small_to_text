@@ -15,5 +15,12 @@ target_compile_options(trigonometry PRIVATE
     $<$<CXX_COMPILER_ID:Clang>:-save-temps=obj>
 )
 
+add_executable(matrix_mul matrix_mul.cpp)
+
+target_compile_options(matrix_mul PRIVATE
+    -O3 -ffast-math -g
+)
+
 find_package(benchmark REQUIRED)
 target_link_libraries(trigonometry PRIVATE benchmark::benchmark)
+target_link_libraries(matrix_mul PRIVATE benchmark::benchmark)
