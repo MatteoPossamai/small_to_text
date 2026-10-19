@@ -21,6 +21,11 @@ template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N> class Network {
   std::array<std::array<output_t, L2>, L1> w1;
   std::array<std::array<output_t, OUT_N>, L2> w2;
 
+  // One bias per hidden and output neuron.
+  std::array<output_t, L1> b0{};
+  std::array<output_t, L2> b1{};
+  std::array<output_t, OUT_N> b2{};
+
   [[gnu::always_inline]] inline output_t ReLU(output_t value) {
     return std::max(static_cast<output_t>(0), value);
   }
@@ -54,14 +59,25 @@ public:
     for (auto &row : w2)
       for (auto &el : row)
         el = static_cast<output_t>(distribution(r));
+
+    b0.fill(0);
+    b1.fill(0);
+    b2.fill(0);
   }
 
-  void load_weights(std::array<std::array<output_t, L1>, IN_N> &w0_in,
-                    std::array<std::array<output_t, L2>, L1> &w1_in,
-                    std::array<std::array<output_t, OUT_N>, L2> &w2_in) {
+  void load_weights(
+      const std::array<std::array<output_t, L1>, IN_N> &w0_in,
+      const std::array<std::array<output_t, L2>, L1> &w1_in,
+      const std::array<std::array<output_t, OUT_N>, L2> &w2_in,
+      const std::array<output_t, L1> &b0_in = {},
+      const std::array<output_t, L2> &b1_in = {},
+      const std::array<output_t, OUT_N> &b2_in = {}) {
     w0 = w0_in;
     w1 = w1_in;
     w2 = w2_in;
+    b0 = b0_in;
+    b1 = b1_in;
+    b2 = b2_in;
   }
 
   const std::array<output_t, OUT_N> &output() const {
@@ -103,15 +119,18 @@ void Network<IN_N, L1, L2, OUT_N>::matrix_mul(
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
 void Network<IN_N, L1, L2, OUT_N>::forward_pass() {
   matrix_mul(input_layer, w0, layer1);
-  for (auto &value : layer1) {
-    value = ReLU(value);
+  for (size_t i = 0; i < L1; ++i) {
+    layer1[i] = ReLU(layer1[i] + b0[i]);
   }
 
   matrix_mul(layer1, w1, layer2);
-  for (auto &value : layer2) {
-    value = ReLU(value);
+  for (size_t i = 0; i < L2; ++i) {
+    layer2[i] = ReLU(layer2[i] + b1[i]);
   }
 
   matrix_mul(layer2, w2, output_layer);
+  for (size_t i = 0; i < OUT_N; ++i) {
+    output_layer[i] += b2[i];
+  }
   normalize_output_layer();
 }

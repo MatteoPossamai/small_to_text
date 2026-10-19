@@ -25,4 +25,7 @@ if(BUILD_TESTING)
   add_executable(encoding_tests tests/encoding.cpp)
   target_compile_options(encoding_tests PRIVATE -O3 -g)
   add_test(NAME encoding COMMAND encoding_tests)
+
+  add_executable(network_tests tests/network.cpp)
+  add_test(NAME network COMMAND network_tests)
 endif()
