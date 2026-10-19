@@ -65,13 +65,12 @@ public:
     b2.fill(0);
   }
 
-  void load_weights(
-      const std::array<std::array<output_t, L1>, IN_N> &w0_in,
-      const std::array<std::array<output_t, L2>, L1> &w1_in,
-      const std::array<std::array<output_t, OUT_N>, L2> &w2_in,
-      const std::array<output_t, L1> &b0_in = {},
-      const std::array<output_t, L2> &b1_in = {},
-      const std::array<output_t, OUT_N> &b2_in = {}) {
+  void load_weights(const std::array<std::array<output_t, L1>, IN_N> &w0_in,
+                    const std::array<std::array<output_t, L2>, L1> &w1_in,
+                    const std::array<std::array<output_t, OUT_N>, L2> &w2_in,
+                    const std::array<output_t, L1> &b0_in = {},
+                    const std::array<output_t, L2> &b1_in = {},
+                    const std::array<output_t, OUT_N> &b2_in = {}) {
     w0 = w0_in;
     w1 = w1_in;
     w2 = w2_in;
