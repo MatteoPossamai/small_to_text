@@ -80,8 +80,27 @@ void test_files() {
     throw std::runtime_error("Missing network file accepted");
 }
 
+void test_backprop() {
+  Network<2, 3, 2, 2> network;
+  network.load_weights({{{1, 0, -1}, {0, 1, 0}}},
+                       {{{1, 0}, {0, 1}, {1, -1}}},
+                       {{{1, -1}, {-1, 1}}});
+  network.load({1, 2});
+  network.forward_pass();
+  check_output(network, -1, 1);
+  const auto initial_probability = network.output()[0];
+
+  network.backprop({1, 0}, 0.1f);
+  network.forward_pass();
+  // Independent reference from the numerical training walkthrough.
+  check_output(network, 3.214125517, -3.214125517);
+  if (network.output()[0] <= initial_probability)
+    throw std::runtime_error("Backprop did not improve the example prediction");
+}
+
 void run_tests() {
   test_files();
+  test_backprop();
   const std::array<std::array<output_t, 3>, 2> w0{{{1, -1, 2}, {3, 1, 1}}};
   const std::array<std::array<output_t, 2>, 3> w1{{{1, 2}, {3, 4}, {-1, 2}}};
   const std::array<std::array<output_t, 2>, 2> w2{{{10, 20}, {1, -1}}};
@@ -119,7 +138,7 @@ void run_tests() {
 int main() {
   try {
     run_tests();
-    std::cout << "Passed: network files, biases, loading, initialization and forward pass\n";
+    std::cout << "Passed: network files, biases, initialization, forward pass and backprop\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.15...4.4)
 
 project(SmallToText LANGUAGES CXX)
 
+set(NETWORK_MODEL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/network/speech_commands.txt")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -36,9 +38,34 @@ target_compile_options(compile_audios PRIVATE
 )
 
 # -----------------
+# Train target
+# -----------------
+add_executable(train src/train.cpp)
+target_compile_definitions(train PRIVATE
+    NETWORK_MODEL_PATH="${NETWORK_MODEL_PATH}"
+)
+target_compile_options(train PRIVATE
+    -O3 -ffast-math -g
+)
+
+# -----------------
+# Scoring target
+# -----------------
+add_executable(scoring src/scoring.cpp)
+target_compile_definitions(scoring PRIVATE
+    NETWORK_MODEL_PATH="${NETWORK_MODEL_PATH}"
+)
+target_compile_options(scoring PRIVATE
+    -O3 -ffast-math -g
+)
+
+# -----------------
 # Inference target
 # -----------------
 add_executable(inference src/inference.cpp)
+target_compile_definitions(inference PRIVATE
+    NETWORK_MODEL_PATH="${NETWORK_MODEL_PATH}"
+)
 target_compile_options(inference PRIVATE
     -O3 -ffast-math -g
 )

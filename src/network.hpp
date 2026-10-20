@@ -53,21 +53,19 @@ public:
   void forward_pass();
 
   void initialize_random_weights() {
-    std::random_device r;
-    std::default_random_engine generator(r());
-    std::uniform_int_distribution<size_t> distribution(0, 100);
+    std::mt19937 generator(std::random_device{}());
+    auto initialize = [&generator](auto &weights, output_t bound) {
+      std::uniform_real_distribution<output_t> distribution(-bound, bound);
+      for (auto &row : weights)
+        for (auto &weight : row)
+          weight = distribution(generator);
+    };
 
-    for (auto &row : w0)
-      for (auto &el : row)
-        el = static_cast<output_t>(distribution(r));
-
-    for (auto &row : w1)
-      for (auto &el : row)
-        el = static_cast<output_t>(distribution(r));
-
-    for (auto &row : w2)
-      for (auto &el : row)
-        el = static_cast<output_t>(distribution(r));
+    // Scale the hidden-layer weights for ReLU and the output weights for
+    // softmax.
+    initialize(w0, std::sqrt(output_t{6} / IN_N));
+    initialize(w1, std::sqrt(output_t{6} / L1));
+    initialize(w2, std::sqrt(output_t{6} / (L2 + OUT_N)));
 
     b0.fill(0);
     b1.fill(0);
@@ -94,8 +92,8 @@ public:
 
   bool from_file(const std::string &path);
   bool to_file(const std::string &path);
-  void backprop(const std::array<output_t, OUT_N> &target,
-                output_t learning_rate);
+  output_t backprop(const std::array<output_t, OUT_N> &target,
+                    output_t learning_rate);
 };
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
@@ -120,12 +118,11 @@ void Network<IN_N, L1, L2, OUT_N>::matrix_mul(
     std::array<output_t, X> &inputs,
     std::array<std::array<output_t, Y>, X> &weights,
     std::array<output_t, Y> &res) {
-  for (size_t i = 0; i < Y; ++i) {
-    output_t total = 0;
-    for (size_t j = 0; j < X; ++j) {
-      total += inputs[j] * weights[j][i];
+  res.fill(0);
+  for (size_t i = 0; i < X; ++i) {
+    for (size_t j = 0; j < Y; ++j) {
+      res[j] += inputs[i] * weights[i][j];
     }
-    res[i] = total;
   }
 }
 
@@ -246,11 +243,12 @@ bool Network<IN_N, L1, L2, OUT_N>::to_file(const std::string &file_path) {
   }
   file << "\n";
 
+  file.close();
   return static_cast<bool>(file);
 }
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
-void Network<IN_N, L1, L2, OUT_N>::backprop(
+output_t Network<IN_N, L1, L2, OUT_N>::backprop(
     const std::array<output_t, OUT_N> &target, output_t learning_rate) {
 
   std::array<output_t, OUT_N> losses = {};
@@ -307,4 +305,6 @@ void Network<IN_N, L1, L2, OUT_N>::backprop(
       w0[i][j] -= learning_rate * input_layer[i] * db0[j];
     }
   }
+
+  return scalar_loss;
 }

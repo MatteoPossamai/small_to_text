@@ -1,8 +1,11 @@
+#include "io_utils.hpp"
 #include "network.hpp"
 #include "network_utils.hpp"
 #include "utils.hpp"
+#include <charconv>
 #include <filesystem>
 #include <iostream>
+#include <random>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -10,7 +13,16 @@ namespace fs = std::filesystem;
 void build_training_set(const std::string &path,
                         training_set &training_dataset) {
   for (const auto &entry : fs::directory_iterator(path)) {
+    if (!entry.is_directory())
+      continue;
     std::string label = entry.path().filename().string();
+    const auto it =
+        std::find(LABELS_MAPPINGS.begin(), LABELS_MAPPINGS.end(), label);
+    if (it == LABELS_MAPPINGS.end())
+      throw std::runtime_error("Unknown training label: " + label);
+
+    std::array<output_t, N_LABELS> exp_output{};
+    exp_output[std::distance(LABELS_MAPPINGS.begin(), it)] = 1;
 
     for (const auto &file : fs::directory_iterator(entry.path())) {
       if (!file.is_regular_file())
@@ -18,13 +30,7 @@ void build_training_set(const std::string &path,
 
       WavWeights weights;
       weights.from_file(file.path().string());
-      std::array<output_t, N_LABELS> exp_output{};
-      auto it =
-          std::find(LABELS_MAPPINGS.begin(), LABELS_MAPPINGS.end(), label);
-      if (it != LABELS_MAPPINGS.end()) {
-        auto idx = std::distance(LABELS_MAPPINGS.begin(), it);
-        exp_output[idx] = 1.0;
-      }
+      weights.normalize();
 
       training_dataset.emplace_back(std::move(weights), exp_output);
     }
@@ -34,21 +40,67 @@ void build_training_set(const std::string &path,
 int main(int argc, char **argv) {
   constexpr size_t TRAINING_EPOCHS = 10000;
   constexpr output_t LEARNING_RATE = 0.001;
-  if (argc != 2) {
-    std::cout << "Usage: " << argv[0] << " <path/to/training/set>" << std::endl;
+  if (argc < 2 || argc > 4) {
+    std::cout << "Usage: " << argv[0]
+              << " <path/to/training/set> [epochs] [path/to/model]"
+              << std::endl;
     return -1;
   }
 
-  // Training dataset: weights -> Label
+  size_t epochs = TRAINING_EPOCHS;
+  if (argc >= 3) {
+    const std::string_view value = argv[2];
+    const auto [end, error] =
+        std::from_chars(value.data(), value.data() + value.size(), epochs);
+    if (error != std::errc{} || end != value.data() + value.size() ||
+        epochs == 0) {
+      std::cerr << "Epochs must be a positive integer" << std::endl;
+      return 1;
+    }
+  }
+
+  const fs::path model_path = argc == 4 ? argv[3] : NETWORK_MODEL_PATH;
+  std::error_code error;
+  if (!model_path.parent_path().empty())
+    fs::create_directories(model_path.parent_path(), error);
+  if (error) {
+    std::cerr << "Unable to create model directory: " << error.message()
+              << std::endl;
+    return 1;
+  }
+
   training_set training_dataset;
   std::string path = static_cast<std::string>(argv[1]);
-  build_training_set(path, training_dataset);
+  try {
+    build_training_set(path, training_dataset);
+  } catch (const std::exception &error) {
+    std::cerr << "Unable to load training dataset: " << error.what()
+              << std::endl;
+    return 1;
+  }
+  if (training_dataset.empty()) {
+    std::cerr << "Training dataset is empty" << std::endl;
+    return 1;
+  }
   std::cout << "Training dataset loaded." << std::endl;
 
   Network<NETWORK_IN_VALUES, L1_NEURONS, L2_NEURONS, N_LABELS> network = {};
   network.initialize_random_weights();
-  train_network(network, TRAINING_EPOCHS, LEARNING_RATE, training_dataset,
-                LABELS_MAPPINGS);
+  std::mt19937 shuffle_generator(std::random_device{}());
 
+  for (size_t i = 0; i < epochs; i++) {
+    std::shuffle(training_dataset.begin(), training_dataset.end(),
+                 shuffle_generator);
+    auto loss = train_network(network, LEARNING_RATE, training_dataset,
+                              LABELS_MAPPINGS);
+    progress_bar(i + 1, epochs);
+    std::cout << "Loss: " << loss << std::flush;
+  }
+  std::cout << std::endl;
+  if (!network.to_file(model_path.string())) {
+    std::cerr << "Unable to save model: " << model_path << std::endl;
+    return 1;
+  }
+  std::cout << "Saved model to " << model_path << std::endl;
   return 0;
 }
