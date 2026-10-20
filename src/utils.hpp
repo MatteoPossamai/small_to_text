@@ -112,7 +112,8 @@ consteval std::array<trig_t, SAMPLES_PER_BLOCK> get_sin_input_const() {
   std::array<trig_t, SAMPLES_PER_BLOCK> res{};
   for (size_t i = 0; i < SAMPLES_PER_BLOCK; ++i) {
     const size_t phase = (FREQUENCY * i) % SAMPLE_RATE;
-    res[i] = sin_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
+    res[i] =
+        sin_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
   }
   return res;
 }
@@ -123,7 +124,8 @@ consteval std::array<trig_t, SAMPLES_PER_BLOCK> get_cos_input_const() {
   std::array<trig_t, SAMPLES_PER_BLOCK> res{};
   for (size_t i = 0; i < SAMPLES_PER_BLOCK; ++i) {
     const size_t phase = (FREQUENCY * i) % SAMPLE_RATE;
-    res[i] = cos_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
+    res[i] =
+        cos_constexpr(2 * std::numbers::pi_v<trig_t> * phase / SAMPLE_RATE);
   }
   return res;
 }
