@@ -290,4 +290,21 @@ void Network<IN_N, L1, L2, OUT_N>::backprop(
   }
 
   // Weights
+  for (size_t i = 0; i < layer2.size(); ++i) {
+    for (size_t j = 0; j < db2.size(); ++j) {
+      w2[i][j] -= learning_rate * layer2[i] * db2[j];
+    }
+  }
+
+  for (size_t i = 0; i < layer1.size(); ++i) {
+    for (size_t j = 0; j < db1.size(); ++j) {
+      w1[i][j] -= learning_rate * layer1[i] * db1[j];
+    }
+  }
+
+  for (size_t i = 0; i < input_layer.size(); ++i) {
+    for (size_t j = 0; j < db0.size(); ++j) {
+      w0[i][j] -= learning_rate * input_layer[i] * db0[j];
+    }
+  }
 }
