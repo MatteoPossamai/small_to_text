@@ -4,7 +4,6 @@
 #include "utils.hpp"
 #include "wav_weights.hpp"
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <string_view>
 

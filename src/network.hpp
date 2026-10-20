@@ -35,7 +35,7 @@ template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N> class Network {
   }
 
   [[gnu::always_inline]] inline output_t loss(output_t output,
-                                            output_t expected) {
+                                              output_t expected) {
     return -std::log(output);
   }
 
@@ -252,9 +252,42 @@ bool Network<IN_N, L1, L2, OUT_N>::to_file(const std::string &file_path) {
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
 void Network<IN_N, L1, L2, OUT_N>::backprop(
     const std::array<output_t, OUT_N> &target, output_t learning_rate) {
-  // TODO: impl backpropagation for biases and weights
+
+  std::array<output_t, OUT_N> losses = {};
+  std::array<output_t, OUT_N> gradients = {};
+  output_t scalar_loss = 0;
+  for (size_t i = 0; i < losses.size(); i++) {
+    losses[i] = loss(norm_output_layer[i], target[i]);
+    scalar_loss += target[i] == 0 ? 0 : losses[i];
+    gradients[i] = norm_output_layer[i] - target[i];
+  }
 
   // Biases
+  std::array<output_t, L1> db0{};
+  std::array<output_t, L2> db1{};
+  std::array<output_t, OUT_N> db2 = gradients;
+
+  for (size_t i = 0; i < db2.size(); i++) {
+    b2[i] -= learning_rate * db2[i];
+  }
+
+  for (size_t i = 0; i < db1.size(); i++) {
+    output_t temp = 0;
+    for (size_t j = 0; j < db2.size(); j++) {
+      temp += w2[i][j] * db2[j];
+    }
+    db1[i] = layer2[i] > 0 ? temp : 0;
+    b1[i] -= learning_rate * db1[i];
+  }
+
+  for (size_t i = 0; i < db0.size(); i++) {
+    output_t temp = 0;
+    for (size_t j = 0; j < db1.size(); j++) {
+      temp += w1[i][j] * db1[j];
+    }
+    db0[i] = layer1[i] > 0 ? temp : 0;
+    b0[i] -= learning_rate * db0[i];
+  }
 
   // Weights
 }
