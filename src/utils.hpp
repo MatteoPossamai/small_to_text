@@ -35,6 +35,8 @@ constexpr auto FREQUENCIES = [] {
 
 constexpr size_t NETWORK_IN_VALUES =
     ((N_SAMPLES - SAMPLES_PER_BLOCK) / SAMPLES_SHIFT + 1) * NUM_BANDS;
+constexpr size_t L1_NEURONS = 128;
+constexpr size_t L2_NEURONS = 64;
 
 [[gnu::always_inline]] constexpr size_t get_starting_padding(size_t chunk_idx) {
   return NUM_BANDS * chunk_idx;

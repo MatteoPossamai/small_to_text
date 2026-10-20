@@ -34,6 +34,11 @@ template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N> class Network {
     return std::max(static_cast<output_t>(0), value);
   }
 
+  [[gnu::always_inline]] inline output_t loss(output_t output,
+                                            output_t expected) {
+    return -std::log(output);
+  }
+
   void normalize_output_layer();
 
   template <size_t X, size_t Y>
@@ -89,6 +94,8 @@ public:
 
   bool from_file(const std::string &path);
   bool to_file(const std::string &path);
+  void backprop(const std::array<output_t, OUT_N> &target,
+                output_t learning_rate);
 };
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
@@ -240,4 +247,14 @@ bool Network<IN_N, L1, L2, OUT_N>::to_file(const std::string &file_path) {
   file << "\n";
 
   return static_cast<bool>(file);
+}
+
+template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
+void Network<IN_N, L1, L2, OUT_N>::backprop(
+    const std::array<output_t, OUT_N> &target, output_t learning_rate) {
+  // TODO: impl backpropagation for biases and weights
+
+  // Biases
+
+  // Weights
 }

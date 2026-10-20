@@ -1,8 +1,10 @@
 #pragma once
 
 #include "network.hpp"
+#include "utils.hpp"
 #include "wav_weights.hpp"
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <string_view>
 
@@ -51,5 +53,17 @@ constexpr std::array<std::string_view, N_LABELS> LABELS_MAPPINGS = {
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
 void train_network(Network<IN_N, L1, L2, OUT_N> &network, size_t epochs,
-                   size_t learning_rate, const training_set &training_dataset) {
+                   output_t learning_rate, const training_set &training_dataset,
+                   const std::array<std::string_view, N_LABELS> mappings) {
+  for (size_t i = 0; i < epochs; ++i) {
+    for (const auto &training_point : training_dataset) {
+      const auto &[weights, target] = training_point;
+
+      // Perform forward pass
+      network.load(weights.data());
+      network.forward_pass();
+
+      network.backprop(target, learning_rate);
+    }
+  }
 }
