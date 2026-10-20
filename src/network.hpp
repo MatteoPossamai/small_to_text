@@ -1,6 +1,8 @@
 #include "utils.hpp"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <iomanip>
 #include <random>
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N> class Network {
@@ -82,6 +84,9 @@ public:
   const std::array<output_t, OUT_N> &output() const {
     return norm_output_layer;
   }
+
+  bool from_file(const std::string &path);
+  bool to_file(const std::string &path);
 };
 
 template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
@@ -132,4 +137,105 @@ void Network<IN_N, L1, L2, OUT_N>::forward_pass() {
     output_layer[i] += b2[i];
   }
   normalize_output_layer();
+}
+
+template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
+bool Network<IN_N, L1, L2, OUT_N>::from_file(const std::string &file_path) {
+  std::ifstream file(file_path);
+  if (!file)
+    return false;
+
+  size_t in_n, l1, l2, out_n;
+  if (!(file >> in_n >> l1 >> l2 >> out_n) || in_n != IN_N || l1 != L1 ||
+      l2 != L2 || out_n != OUT_N)
+    return false;
+
+  // Biases
+  for (auto &bias : b0) {
+    if (!(file >> bias))
+      return false;
+  }
+  for (auto &bias : b1) {
+    if (!(file >> bias))
+      return false;
+  }
+  for (auto &bias : b2) {
+    if (!(file >> bias))
+      return false;
+  }
+
+  // Weights
+  for (auto &weight_row : w0) {
+    for (auto &weight : weight_row) {
+      if (!(file >> weight))
+        return false;
+    }
+  }
+  for (auto &weight_row : w1) {
+    for (auto &weight : weight_row) {
+      if (!(file >> weight))
+        return false;
+    }
+  }
+  for (auto &weight_row : w2) {
+    for (auto &weight : weight_row) {
+      if (!(file >> weight))
+        return false;
+    }
+  }
+
+  return true;
+}
+
+template <size_t IN_N, size_t L1, size_t L2, size_t OUT_N>
+bool Network<IN_N, L1, L2, OUT_N>::to_file(const std::string &file_path) {
+  std::ofstream file(file_path);
+  if (!file)
+    return false;
+
+  file << IN_N << " " << L1 << " " << L2 << " " << OUT_N << "\n\n";
+  file << std::setprecision(std::numeric_limits<double>::max_digits10);
+
+  // Biases
+  for (const auto &bias : b0) {
+    file << bias << " ";
+  }
+  file << "\n\n";
+
+  for (const auto &bias : b1) {
+    file << bias << " ";
+  }
+  file << "\n\n";
+
+  for (const auto &bias : b2) {
+    file << bias << " ";
+  }
+  file << "\n\n";
+
+  // Weights
+  for (const auto &weight_row : w0) {
+    for (const auto &weight : weight_row) {
+      file << weight << " ";
+    }
+    file << "\n";
+  }
+  file << "\n";
+
+  for (const auto &weight_row : w1) {
+    for (const auto &weight : weight_row) {
+      file << weight << " ";
+    }
+    file << "\n";
+  }
+  file << "\n";
+
+  for (const auto &weight_row : w2) {
+    for (const auto &weight : weight_row) {
+      file << weight << " ";
+    }
+    file << "\n";
+  }
+  file << "\n";
+
+  return static_cast<bool>(file);
 }
