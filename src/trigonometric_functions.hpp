@@ -1,3 +1,5 @@
+#pragma once
+
 #include "utils.hpp"
 #include <cmath>
 #include <span>

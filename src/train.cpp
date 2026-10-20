@@ -1,14 +1,10 @@
 #include "network_utils.hpp"
 #include "utils.hpp"
-#include "wav_weights.hpp"
 #include <filesystem>
 #include <iostream>
 #include <string>
-#include <vector>
 
 namespace fs = std::filesystem;
-using training_set =
-    std::vector<std::tuple<WavWeights, std::array<output_t, N_LABELS>>>;
 
 void build_training_set(const std::string &path,
                         training_set &training_dataset) {
