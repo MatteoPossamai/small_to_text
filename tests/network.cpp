@@ -1,4 +1,4 @@
-#include "../src/network.hpp"
+#include "../src/network_utils.hpp"
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -6,6 +6,37 @@
 #include <stdexcept>
 
 namespace {
+
+void test_time_shift() {
+  std::array<output_t, NETWORK_IN_VALUES> input{};
+  // Give every band a distinct value at both edges and in the middle.
+  constexpr size_t WINDOWS = NETWORK_IN_VALUES / NUM_BANDS;
+  constexpr size_t MIDDLE = WINDOWS / 2;
+  for (size_t band = 0; band < NUM_BANDS; ++band) {
+    input[band] = band + 1;
+    input[MIDDLE * NUM_BANDS + band] = band + 101;
+    input[(WINDOWS - 1) * NUM_BANDS + band] = band + 201;
+  }
+  const auto original = input;
+  if (time_shift(input, 0) != input)
+    throw std::runtime_error("Zero time shift changed features");
+
+  for (const int shift : {-4, -1, 1, 4}) {
+    std::array<output_t, NETWORK_IN_VALUES> expected{};
+    const size_t shifted_middle = static_cast<int>(MIDDLE) + shift;
+    const size_t shifted_edge =
+        shift > 0 ? shift : static_cast<int>(WINDOWS) - 1 + shift;
+    for (size_t band = 0; band < NUM_BANDS; ++band) {
+      expected[shifted_middle * NUM_BANDS + band] = band + 101;
+      expected[shifted_edge * NUM_BANDS + band] =
+          band + (shift > 0 ? 1 : 201);
+    }
+    if (time_shift(input, shift) != expected)
+      throw std::runtime_error("Time shift mixed bands or handled edges incorrectly");
+  }
+  if (input != original)
+    throw std::runtime_error("Time shift changed the stored training sample");
+}
 
 void check_output(const Network<2, 3, 2, 2> &network,
                   double first_logit, double second_logit) {
@@ -99,6 +130,7 @@ void test_backprop() {
 }
 
 void run_tests() {
+  test_time_shift();
   test_files();
   test_backprop();
   const std::array<std::array<output_t, 3>, 2> w0{{{1, -1, 2}, {3, 1, 1}}};
@@ -138,7 +170,7 @@ void run_tests() {
 int main() {
   try {
     run_tests();
-    std::cout << "Passed: network files, biases, initialization, forward pass and backprop\n";
+    std::cout << "Passed: time shifts, network files, biases, initialization, forward pass and backprop\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;
