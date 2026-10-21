@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One training step - small_to_text</title>
+<style>
+:root{color-scheme:light;--ink:#162825;--muted:#5d6e68;--line:#d8e2dc;--paper:#f5f7f2;--green:#16775d;--orange:#b74c20;--blue:#286baa}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,sans-serif}button,a{touch-action:manipulation}button{font:inherit;cursor:pointer}button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:3px solid #2475bb;outline-offset:4px}button:disabled{cursor:default;opacity:.4}main{max-width:1120px;padding:32px 24px 64px;margin:auto}header{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:11px;font-weight:750;color:var(--green)}h1{font-size:clamp(28px,4vw,42px);line-height:1.15;margin:8px 0 10px;letter-spacing:-.04em}p{margin:8px 0 14px}.muted{color:var(--muted)}.badge{font-size:12px;border:1px solid var(--line);border-radius:40px;padding:8px 13px;white-space:nowrap}code,.number,.formula,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}code{font-size:.92em}.progress{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;margin:26px 0 12px}.progress button{height:7px;border:0;border-radius:8px;background:#d9e3db;padding:0}.progress button.past{background:#9ac4b2}.progress button.current{background:var(--green)}.step-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px}.step-count{font-size:13px;color:var(--muted)}select{font:inherit;border:1px solid var(--line);background:white;padding:7px;border-radius:8px;max-width:73%}.network{background:white;border:1px solid var(--line);border-radius:18px;padding:12px 16px 8px;overflow:hidden}.network-scroll{overflow:auto}svg{display:block;width:100%;min-width:620px}.graph-caption{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:10px;padding:0 8px 5px}.node{cursor:pointer}.node circle{fill:white;stroke:#a8bcb2;stroke-width:2}.node.active circle{stroke:var(--green);fill:#f0faf5;stroke-width:3}.node.backward circle{stroke:var(--orange);fill:#fff5ef}.node.blocked circle{stroke-dasharray:5 4;fill:#f0f1ef;stroke:#9da6a0}.node.selected circle{stroke:var(--blue);stroke-width:4}.node text{pointer-events:none}.edge{stroke:#ccd9d0;stroke-width:1.4;fill:none;cursor:pointer}.edge.active{stroke:#39947b;stroke-width:2.5}.edge.backward{stroke:#c2744f;stroke-width:2.5}.edge.selected{stroke:var(--blue);stroke-width:4}.edge-hit{stroke:transparent;stroke-width:16;fill:none;cursor:pointer}.lesson{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.92fr);gap:28px;background:white;border:1px solid var(--line);border-radius:18px;margin-top:16px;padding:26px}.lesson h2{font-size:26px;line-height:1.2;margin:6px 0 14px;letter-spacing:-.025em}.lesson h3{font-size:15px;margin:0 0 10px}.lesson p:last-child{margin-bottom:0}.formulas{background:#f1f5f0;border-radius:12px;padding:17px 18px;align-self:start;min-width:0}.formula{font-size:14px;line-height:1.9;overflow-wrap:anywhere}.annotation{font-size:13px;color:var(--muted);margin-top:12px}.callout{border-left:3px solid var(--green);padding-left:14px;margin:18px 0 0;font-size:14px}.orange{color:var(--orange)}.green{color:var(--green)}.inspector{border:1px solid #a9bfd5;border-radius:14px;padding:17px 20px;background:#f6faff;margin-top:14px}.inspector-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.inspector h3{margin:0;font-size:16px}.plain{border:0;background:transparent;color:var(--muted);padding:4px 7px}.inspector .formula{font-size:13px}.inspector p{font-size:14px;margin:7px 0}.nav{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px}.nav button,.download{border:1px solid var(--line);border-radius:10px;padding:11px 20px;background:white;color:var(--ink)}.nav .next,.download{background:var(--green);color:white;border-color:var(--green)}.keys{font-size:12px;color:var(--muted)}.tabs{display:flex;gap:6px;margin:0 0 14px;flex-wrap:wrap}.tabs button{background:white;border:1px solid var(--line);border-radius:7px;font-size:13px;padding:5px 9px}.tabs button[aria-selected=true]{background:var(--ink);color:white;border-color:var(--ink)}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);text-align:right;padding:7px 5px}th:first-child,td:first-child{text-align:left}th{font-weight:600;color:var(--muted)}.bar-row{display:grid;grid-template-columns:60px 1fr 65px;gap:8px;align-items:center;margin:10px 0;font-size:13px}.track{height:12px;background:#dfe8df;border-radius:7px;overflow:hidden}.fill{height:100%;background:var(--green);border-radius:7px}.fill.wrong{background:#c58b72}.metric{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}.metric>div{background:#edf4ed;border-radius:10px;padding:13px}.metric strong{display:block;font-size:24px;font-family:ui-monospace,monospace}.metric small{color:var(--muted)}details{margin-top:16px;font-size:13px}summary{cursor:pointer}pre{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto;background:#edf2ec;padding:12px;border-radius:8px}.footer{font-size:12px;color:var(--muted);margin-top:24px;border-top:1px solid var(--line);padding-top:14px}a{color:var(--green)}.download{font-size:13px;padding:9px 12px;margin-top:12px}ul{padding-left:20px}li{margin-bottom:6px}[hidden]{display:none!important}
+@media(max-width:720px){main{padding:22px 14px 40px}header{display:block}.badge{display:inline-block;margin-top:10px}.lesson{grid-template-columns:1fr;padding:20px;gap:20px}.network{padding:8px 4px}.graph-caption{display:block}.keys{display:none}.lesson h2{font-size:23px}.nav button{padding:10px 14px}.progress{gap:4px}.metric strong{font-size:21px}}
+@media(prefers-reduced-motion:no-preference){.fill{transition:width .25s}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="eyebrow">A numerical walkthrough of your network</div><h1>One example. One update.</h1><p class="muted">Watch the values go forward, then follow the gradients backward.</p></div>
+    <div class="badge">Network&lt;2, 3, 2, 2&gt;</div>
+  </header>
+  <nav class="progress" id="progress" aria-label="Training steps"></nav>
+  <div class="step-top"><span class="step-count" id="step-count"></span><select id="step-select" aria-label="Jump to a step"></select></div>
+  <section class="network" aria-label="Network diagram">
+    <div class="network-scroll"><svg id="network" viewBox="0 0 980 350" role="img" aria-labelledby="graph-title graph-desc"></svg></div>
+    <div class="graph-caption"><span id="graph-caption"></span><span>Click a neuron or connection to inspect it.</span></div>
+  </section>
+  <aside id="inspector" class="inspector" aria-label="Selected calculation" hidden></aside>
+  <section id="lesson" class="lesson" aria-live="polite" aria-atomic="true"></section>
+  <nav class="nav" aria-label="Step navigation"><button id="previous">← Previous</button><span class="keys">Use ← / → on your keyboard</span><button class="next" id="next">Next step →</button></nav>
+  <p class="footer">Made for <code>src/network.hpp</code> and <code>src/train.cpp</code>. Hand-picked weights make the arithmetic readable. Values are rounded on screen; all 23 gradients were checked numerically. See <code>docs/running.md</code> for the C++ training, scoring, and inference commands.</p>
+</main>
+<script id="example-data" type="application/json">{
+  "initial": {
+    "W0": [
+      [
+        1.0,
+        0.0,
+        -1.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ]
+    ],
+    "b0": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "W1": [
+      [
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0
+      ],
+      [
+        1.0,
+        -1.0
+      ]
+    ],
+    "b1": [
+      0.0,
+      0.0
+    ],
+    "W2": [
+      [
+        1.0,
+        -1.0
+      ],
+      [
+        -1.0,
+        1.0
+      ]
+    ],
+    "b2": [
+      0.0,
+      0.0
+    ]
+  },
+  "forward": {
+    "z1": [
+      1.0,
+      2.0,
+      -1.0
+    ],
+    "a1": [
+      1.0,
+      2.0,
+      0
+    ],
+    "z2": [
+      1.0,
+      2.0
+    ],
+    "a2": [
+      1.0,
+      2.0
+    ],
+    "logits": [
+      -1.0,
+      1.0
+    ],
+    "probs": [
+      0.11920292202211755,
+      0.8807970779778823
+    ],
+    "loss": 2.1269280110429727
+  },
+  "deltas": {
+    "d3": [
+      -0.8807970779778824,
+      0.8807970779778823
+    ],
+    "d2raw": [
+      -1.7615941559557649,
+      1.7615941559557649
+    ],
+    "d2": [
+      -1.7615941559557649,
+      1.7615941559557649
+    ],
+    "d1raw": [
+      -1.7615941559557649,
+      1.7615941559557649,
+      -3.5231883119115297
+    ],
+    "d1": [
+      -1.7615941559557649,
+      1.7615941559557649,
+      0
+    ]
+  },
+  "gradients": {
+    "W0": [
+      [
+        -1.7615941559557649,
+        1.7615941559557649,
+        0.0
+      ],
+      [
+        -3.5231883119115297,
+        3.5231883119115297,
+        0.0
+      ]
+    ],
+    "b0": [
+      -1.7615941559557649,
+      1.7615941559557649,
+      0
+    ],
+    "W1": [
+      [
+        -1.7615941559557649,
+        1.7615941559557649
+      ],
+      [
+        -3.5231883119115297,
+        3.5231883119115297
+      ],
+      [
+        -0.0,
+        0.0
+      ]
+    ],
+    "b1": [
+      -1.7615941559557649,
+      1.7615941559557649
+    ],
+    "W2": [
+      [
+        -0.8807970779778824,
+        0.8807970779778823
+      ],
+      [
+        -1.7615941559557649,
+        1.7615941559557646
+      ]
+    ],
+    "b2": [
+      -0.8807970779778824,
+      0.8807970779778823
+    ]
+  },
+  "updated": {
+    "W0": [
+      [
+        1.1761594155955766,
+        -0.1761594155955765,
+        -1.0
+      ],
+      [
+        0.352318831191153,
+        0.6476811688088471,
+        0.0
+      ]
+    ],
+    "b0": [
+      0.1761594155955765,
+      -0.1761594155955765,
+      0.0
+    ],
+    "W1": [
+      [
+        1.1761594155955766,
+        -0.1761594155955765
+      ],
+      [
+        0.352318831191153,
+        0.6476811688088471
+      ],
+      [
+        1.0,
+        -1.0
+      ]
+    ],
+    "b1": [
+      0.1761594155955765,
+      -0.1761594155955765
+    ],
+    "W2": [
+      [
+        1.0880797077977882,
+        -1.0880797077977882
+      ],
+      [
+        -0.8238405844044235,
+        0.8238405844044235
+      ]
+    ],
+    "b2": [
+      0.08807970779778825,
+      -0.08807970779778823
+    ]
+  },
+  "second_forward": {
+    "z1": [
+      2.056956493573459,
+      0.9430435064265411,
+      -1.0
+    ],
+    "a1": [
+      2.056956493573459,
+      0.9430435064265411,
+      0
+    ],
+    "z2": [
+      2.9277201489290676,
+      0.07227985107093246
+    ],
+    "a2": [
+      2.9277201489290676,
+      0.07227985107093246
+    ],
+    "logits": [
+      3.2141255172112833,
+      -3.2141255172112833
+    ],
+    "probs": [
+      0.9983873314775273,
+      0.0016126685224725666
+    ],
+    "loss": 0.0016139702720696647
+  },
+  "checked_parameters": 23,
+  "max_finite_difference_error": 2.9763436160124e-10
+}</script>
+<script>
+'use strict';
+const D = JSON.parse(document.getElementById('example-data').textContent);
+const X = [1, 2], TARGET = [1, 0], RATE = .1;
+const F = D.forward, B = D.deltas, G = D.gradients, U = D.updated, AFTER = D.second_forward;
+const fmt = (n, digits = 4) => Math.abs(n) < 1e-10 ? '0' : Number(n.toFixed(digits)).toString();
+const signed = n => n > 0 ? '+' + fmt(n) : fmt(n);
+const times = n => n < 0 ? '(' + fmt(n) + ')' : fmt(n);
+const formula = text => '<div class="formula">' + text + '</div>';
+const formulas = lines => lines.map(formula).join('');
+const stages = [
+  {short:'The example', phase:'Start', title:'Give the network one example.', layer:0,
+   text:'Our input has two numbers: <code>[1, 2]</code>. The correct answer is <strong>class 0</strong>, so the target is <code>[1, 0]</code>. There are 3 neurons in hidden layer 1, 2 in hidden layer 2, and 2 outputs.',
+   note:'Your train.cpp already builds this kind of target: one entry is 1 and all other entries are 0. These are invented input values, not an encoded audio clip.',
+   lines:['Input = [1, 2]','Target = [1, 0]','Learning rate = 0.1'],
+   foot:'Every line is a weight. Every non-input neuron also has a bias. All biases start at 0 here; click a neuron to see its weights.'},
+  {short:'Hidden layer 1', phase:'Forward · 1 of 4', title:'Multiply, add the bias, apply ReLU.', layer:1,
+   text:'Each neuron takes a weighted sum of both inputs and adds its own bias. <strong>ReLU keeps positive values and replaces negative values with 0.</strong>',
+   note:'A3 receives −1, so it sends 0 to the next layer. It still has weights and a bias.',
+   lines:['A1 = ReLU(1×1 + 2×0 + 0) = 1','A2 = ReLU(1×0 + 2×1 + 0) = 2','A3 = ReLU(1×(−1) + 2×0 + 0) = 0'],
+   foot:'The last +0 in each line is that neuron’s bias.'},
+  {short:'Hidden layer 2', phase:'Forward · 2 of 4', title:'Use those outputs as the next inputs.', layer:2,
+   text:'Hidden layer 2 receives <code>[1, 2, 0]</code>. It does exactly the same operation, with its own weights and biases.',
+   note:'The third input is 0, so A3 contributes nothing to either weighted sum on this example.',
+   lines:['B1 = ReLU(1×1 + 2×0 + 0×1 + 0) = 1','B2 = ReLU(1×0 + 2×1 + 0×(−1) + 0) = 2'],
+   foot:'There is a separate bias for B1 and B2.'},
+  {short:'Output scores', phase:'Forward · 3 of 4', title:'Calculate two raw output scores.', layer:3,
+   text:'The output layer receives <code>[1, 2]</code>. It multiplies and adds biases, <strong>without ReLU</strong>. These raw scores are called logits; they can be negative.',
+   note:'At this point the network gives class 1 the larger score, although class 0 is correct.',
+   lines:['Class 0 score = 1×1 + 2×(−1) + 0 = −1','Class 1 score = 1×(−1) + 2×1 + 0 = 1'],
+   foot:'output_layer holds these scores. norm_output_layer will hold the probabilities.'},
+  {short:'Probabilities and loss', phase:'Forward · 4 of 4', title:'Measure how wrong the prediction is.', layer:3,
+   text:'Softmax turns the scores into probabilities that add to 1. The correct class gets only <strong>11.92%</strong>. Cross-entropy loss is <code>−log(probability of the correct class)</code>. Lower is better.',
+   note:'Loss measures confidence in the correct answer. It changes smoothly, even while the predicted class remains wrong.',
+   lines:['P(class 0) = exp(−1) / (exp(−1) + exp(1))','           = 0.119203','Loss = −log(0.119203) = 2.126928'],
+   foot:'The real implementation subtracts the largest score before exp() for numerical stability. That gives the same probabilities.',bars:true},
+  {short:'Output gradients', phase:'Backward · 1 of 3', title:'Which output scores should move?', layer:3, backward:true,
+   text:'A gradient is the <strong>slope of the loss</strong>: how much the loss changes as a number increases. With softmax and cross-entropy, the slope for each raw output score is simply <code>probability − target</code>.',
+   note:'A negative slope means increasing that score reduces loss. A positive slope means decreasing that score reduces loss. These are slopes of the raw scores, not slopes of the probabilities.',
+   lines:['Class 0: 0.119203 − 1 = −0.880797','Class 1: 0.880797 − 0 = +0.880797'],
+   foot:'No parameter has changed yet. Backpropagation calculates slopes first.',nudge:true},
+  {short:'Hidden layer 2 gradients', phase:'Backward · 2 of 3', title:'Follow both paths back to each neuron.', layer:2, backward:true,
+   text:'B1 affects both output scores. Changing B1 by a tiny amount changes class 0’s score by <code>1 × that amount</code> and class 1’s score by <code>−1 × that amount</code>. Multiply each path by its loss slope, then add the two effects.',
+   note:'Hidden neurons have no target labels of their own. Their slopes come from the later layer. Both B neurons were positive before ReLU, so its slope of 1 passes these gradients through unchanged.',
+   lines:['B1: 1×(−0.880797) + (−1)×0.880797','    = −1.761594','B2: (−1)×(−0.880797) + 1×0.880797','    = +1.761594'],
+   foot:'This multiply-and-add rule is the chain rule. A neuron can affect loss through several later neurons, so include every path.'},
+  {short:'Hidden layer 1 gradients', phase:'Backward · 3 of 3', title:'ReLU can stop a gradient.', layer:1, backward:true,
+   text:'Repeat the same weighted sum through w1. Then multiply by the ReLU slope: <strong>1 if the original sum was positive, 0 if it was negative</strong>.',
+   note:'A3’s sum was −1. A small change around −1 still produces ReLU output 0, so its slope is 0 for this example. It can receive a nonzero gradient on another example.',
+   lines:['A1: (1×(−1.761594) + 0×1.761594) × 1','    = −1.761594','A2: (0×(−1.761594) + 1×1.761594) × 1','    = +1.761594','A3: (1×(−1.761594) + (−1)×1.761594) × 0','    = 0'],
+   foot:'Using slope 0 at exactly 0 is conventional; none of our initial ReLU inputs is exactly 0.'},
+  {short:'Weight and bias gradients', phase:'Prepare the update', title:'Turn neuron slopes into parameter slopes.', layer:3, backward:true, allGradients:true,
+   text:'For each connection: <strong>weight gradient = input activation × destination gradient</strong>. A bias is added directly, so its gradient is just the destination gradient.',
+   note:'Example: the connection B2 → class 0 has gradient 2 × (−0.880797) = −1.761594. Choose a matrix below to see all its parameter gradients.',
+   lines:['Weight gradient = source value × destination slope','Bias gradient = destination slope'],
+   foot:'All backward calculations use the original weights. Do not change weights halfway through backpropagation.',table:'gradient'},
+  {short:'Update the parameters', phase:'Gradient descent', title:'Take a small step against each slope.', layer:3,
+   text:'Now update all 16 weights and 7 biases using <code>new = old − 0.1 × gradient</code>. Subtracting a negative gradient increases the parameter.',
+   note:'B2 → class 0: −1 − 0.1 × (−1.761594) = −0.823841. Its weight becomes less negative, which helps class 0.',
+   lines:['new weight = old weight − 0.1 × weight gradient','new bias = old bias − 0.1 × bias gradient'],
+   foot:'The diagram still shows the saved forward values. Only parameters change at this stage; the next step recomputes activations.',table:'update'},
+  {short:'Run forward again', phase:'Check the result', title:'The same input now gives a different answer.', layer:3,
+   text:'Run the same example through the updated network. Class 0 now has the larger score. Its probability increased, and the loss decreased.',
+   note:'This is a hand-picked example with a large improvement. A single successful step does not mean the model has learned the dataset. Some steps can increase loss, especially if the learning rate is too large.',
+   lines:['Hidden 1 = [2.0570, 0.9430, 0]','Hidden 2 = [2.9277, 0.0723]','Scores = [3.2141, −3.2141]'],
+   foot:'Training repeats forward → gradients → update across many examples. An epoch means one pass through the training set.',after:true},
+  {short:'Your training loop and model file', phase:'Back to your C++ code', title:'Repeat the step. Save the learned parameters.', layer:3,
+   text:'Your train.cpp loads normalized input features and target arrays, runs forward and backward calculations, and updates the parameters for each example. It shuffles the examples each epoch and saves the model when training finishes. Scoring and inference load that saved model.',
+   note:'For this small project, a custom versioned JSON or binary file is fine. Save w0/w1/w2 and b0/b1/b2, layer sizes, and the class order. Also record the input normalization so inference applies the same transform.',
+   lines:['load example + target','forward → loss → backward → update','repeat for the other examples','save learned weights + biases'],
+   foot:'This downloadable JSON is an educational example. The C++ programs use their own text format at network/speech_commands.txt. See docs/running.md for commands.',save:true}
+];
+let step = 0, selected = null, tableLayer = 2;
+const names = [['x1','x2'],['A1','A2','A3'],['B1','B2'],['class 0','class 1']];
+const coords = [[{x:85,y:137},{x:85,y:252}],[{x:355,y:100},{x:355,y:195},{x:355,y:290}],[{x:625,y:137},{x:625,y:252}],[{x:895,y:137},{x:895,y:252}]];
+function currentModel(){return step >= 9 ? U : D.initial;}
+function currentForward(){return step >= 10 ? AFTER : F;}
+function vals(layer,f=currentForward()){return [X,f.a1,f.a2,f.logits][layer];}
+function gradients(layer){return [null,B.d1,B.d2,B.d3][layer];}
+function weightKey(layer){return 'W'+(layer-1);}
+function sourceName(layer,index){return names[layer][index];}
+function checkpoint(){return {format:'small_to_text.example',version:1,dimensions:[2,3,2,2],weight_layout:'source_destination',activation:'relu',output:'softmax',labels:['class 0','class 1'],input_transform:{type:'identity',note:'Toy features only; real audio needs its training normalization.'},parameters:Object.fromEntries(Object.entries(U).map(([k,v])=>[k[0]==='W'?'w'+k.slice(1):k,v]))};}
+function bars(probabilities){return probabilities.map((p,i)=>`<div class="bar-row"><span>Class ${i}</span><div class="track"><div class="fill ${i?'wrong':''}" style="width:${p*100}%"></div></div><span class="number">${(p*100).toFixed(2)}%</span></div>`).join('');}
+function tableHTML(mode){
+  const k='W'+tableLayer,b='b'+tableLayer;
+  const tabs=[0,1,2].map(i=>`<button role="tab" aria-selected="${i===tableLayer}" data-matrix="${i}">w${i} + b${i}</button>`).join('');
+  let rows='';
+  D.initial[k].forEach((row,i)=>row.forEach((value,j)=>{rows+=`<tr><td>w${tableLayer}[${i}][${j}]</td>${mode==='update'?`<td>${fmt(value)}</td>`:''}<td class="number">${signed(G[k][i][j])}</td>${mode==='update'?`<td class="number">${fmt(U[k][i][j])}</td>`:''}</tr>`;}));
+  D.initial[b].forEach((value,j)=>{rows+=`<tr><td>b${tableLayer}[${j}]</td>${mode==='update'?`<td>${fmt(value)}</td>`:''}<td class="number">${signed(G[b][j])}</td>${mode==='update'?`<td class="number">${fmt(U[b][j])}</td>`:''}</tr>`;});
+  return `<div class="tabs" role="tablist" aria-label="Parameter matrices">${tabs}</div><table><thead><tr><th>Parameter</th>${mode==='update'?'<th>Before</th>':''}<th>Gradient</th>${mode==='update'?'<th>After</th>':''}</tr></thead><tbody>${rows}</tbody></table><p class="annotation">w[source][destination], matching matrix_mul in your C++.</p>`;
+}
+function draw(){
+  const s=stages[step], f=currentForward();
+  let svg='<title id="graph-title">A fully connected 2, 3, 2, 2 network</title><desc id="graph-desc">'+s.title+' Inputs are on the left. Forward values move right; backward gradients move left. Select a neuron or edge to inspect its calculation.</desc><defs><marker id="forward-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#39947b"/></marker><marker id="backward-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c2744f"/></marker></defs>';
+  ['Input','Hidden 1 · ReLU','Hidden 2 · ReLU','Output · softmax'].forEach((title,l)=>{svg+=`<text x="${coords[l][0].x}" y="28" text-anchor="middle" font-size="14" font-weight="600" fill="#50675a">${title}</text>`;});
+  for(let l=1;l<4;l++){
+    const active=s.backward?l===s.layer+1||s.layer===3&&l===3:step===0?false:l===s.layer;
+    const color=s.backward?'#b74c20':'#16775d';
+    svg+=`<text x="${(coords[l][0].x+coords[l-1][0].x)/2}" y="66" text-anchor="middle" font-size="12" fill="${active?color:'#8b9b91'}">${active?(s.backward?'← gradient':'values →'):'w'+(l-1)}</text>`;
+    coords[l-1].forEach((a,i)=>coords[l].forEach((b,j)=>{
+      const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy),r=39;
+      const start={x:a.x+dx*r/dist,y:a.y+dy*r/dist},end={x:b.x-dx*r/dist,y:b.y-dy*r/dist};
+      const path=s.backward&&active?`M${end.x},${end.y} L${start.x},${start.y}`:`M${start.x},${start.y} L${end.x},${end.y}`;
+      const chosen=selected&&selected.kind==='edge'&&selected.l===l&&selected.i===i&&selected.j===j;
+      const linked=selected&&selected.kind==='node'&&selected.l===l&&selected.i===j;
+      const cls='edge'+(active?' active':'')+(active&&s.backward?' backward':'')+(chosen||linked?' selected':'');
+      svg+=`<path class="${cls}" d="${path}" ${active?'marker-end="url(#'+(s.backward?'backward':'forward')+'-arrow)"':''}/><path class="edge-hit" d="${path}" data-edge="${l},${i},${j}" tabindex="0" role="button" aria-label="Inspect w${l-1}[${i}][${j}] from ${sourceName(l-1,i)} to ${sourceName(l,j)}"><title>w${l-1}[${i}][${j}] = ${fmt(currentModel()[weightKey(l)][i][j])}</title></path>`;
+    }));
+  }
+  coords.forEach((nodes,l)=>nodes.forEach((p,i)=>{
+    let value='?',visible=l===0||step>=l;
+    if(visible)value=fmt(vals(l,f)[i]);
+    let subtitle=l===0?'input':l===3?'raw score':'value';
+    if(l===3&&step>=4){value=(f.probs[i]*100).toFixed(2)+'%';subtitle='probability';}
+    const showsGradient=s.backward&&l>0&&(l>=s.layer||s.allGradients);
+    if(showsGradient){value=fmt(gradients(l)[i]);subtitle='loss slope';}
+    const blocked=l===1&&i===2&&step>=1;
+    let cls='node'+(l===s.layer?' active':'')+(showsGradient?' backward':'')+(blocked?' blocked':'');
+    if(selected&&selected.kind==='node'&&selected.l===l&&selected.i===i)cls+=' selected';
+    svg+=`<g class="${cls}" data-node="${l},${i}" role="button" tabindex="0" aria-label="Inspect ${sourceName(l,i)}"><circle cx="${p.x}" cy="${p.y}" r="37"/><text x="${p.x}" y="${p.y-10}" text-anchor="middle" font-size="11" fill="#51685c">${sourceName(l,i)}</text><text x="${p.x}" y="${p.y+12}" text-anchor="middle" font-size="${value.length>7?13:17}" font-family="ui-monospace,monospace" fill="#182d22">${value}</text><text x="${p.x}" y="${p.y+56}" text-anchor="middle" font-size="11" fill="#617367">${blocked&&!s.backward?'ReLU: −1 → 0':subtitle}</text></g>`;
+  }));
+  document.getElementById('network').innerHTML=svg;
+  document.getElementById('graph-caption').textContent=s.backward?'Orange nodes show loss slopes, before activation. Other nodes show forward values.':step>=10?'Updated parameters · recomputed values.':step===9?'Updated parameters · forward values are still from the original pass.':'Green = current forward stage. Neuron numbers are values.';
+}
+function inspect(){
+  const box=document.getElementById('inspector');
+  if(!selected){box.hidden=true;return;}
+  const m=currentModel(),f=currentForward();
+  let title='',body='';
+  if(selected.kind==='edge'){
+    const {l,i,j}=selected,k=weightKey(l),g=G[k][i][j],value=D.initial[k][i][j];
+    title=`w${l-1}[${i}][${j}] · ${sourceName(l-1,i)} → ${sourceName(l,j)}`;
+    body=formulas([`Initial weight = ${fmt(value)}; source activation = ${fmt(vals(l-1,F)[i])}`,`Gradient = ${fmt(vals(l-1,F)[i])} × ${times(gradients(l)[j])} = ${fmt(g)}`,`Updated weight = ${fmt(value)} − 0.1 × ${times(g)} = ${fmt(U[k][i][j])}`]);
+    body+='<p>The destination slope includes all effects on the loss beyond this connection.</p>';
+  }else{
+    const {l,i}=selected; title=sourceName(l,i);
+    if(l===0){body=`<p>Input feature ${i+1} is <strong>${X[i]}</strong>. Training changes weights and biases; it does not change this supplied input.</p>`;}
+    else{
+      const k=weightKey(l),b='b'+(l-1),old=D.initial;
+      const terms=vals(l-1,F).map((a,j)=>`${fmt(a)} × ${times(old[k][j][i])}`).join(' + ');
+      const z=[null,F.z1,F.z2,F.logits][l][i];
+      body=formulas([`Original sum = ${terms} + ${times(old[b][i])} = ${fmt(z)}`,l<3?`Original output = ReLU(${fmt(z)}) = ${fmt(vals(l,F)[i])}`:`Original probability = ${(F.probs[i]*100).toFixed(4)}%`,`Gradient of loss w.r.t. this sum = ${fmt(gradients(l)[i])}`,`Bias update = ${fmt(old[b][i])} − 0.1 × ${times(G[b][i])} = ${fmt(U[b][i])}`]);
+      if(l<3&&z<0)body+='<p>The original sum was negative. ReLU has slope 0 here, so this neuron’s incoming weights and bias receive zero gradients on this example.</p>';
+      if(step>=9)body+=formula(`Current bias = ${fmt(m[b][i])}; ${step>=10?'recomputed':'saved original'} output = ${fmt(vals(l,f)[i])}`);
+    }
+  }
+  box.hidden=false;box.innerHTML=`<div class="inspector-head"><h3>${title}</h3><button class="plain" id="close-inspector" aria-label="Close inspection">Close ×</button></div>${body}<p class="annotation">Inspector shows the original calculation and its eventual update, even if you have not reached that step yet.</p>`;
+}
+function render(){
+  const s=stages[step];
+  document.getElementById('step-count').textContent=`Step ${step+1} of ${stages.length}`;
+  document.getElementById('progress').innerHTML=stages.map((v,i)=>`<button class="${i===step?'current':i<step?'past':''}" data-step="${i}" aria-label="Step ${i+1}: ${v.short}" ${i===step?'aria-current="step"':''}></button>`).join('');
+  const select=document.getElementById('step-select');select.innerHTML=stages.map((v,i)=>`<option value="${i}">${i+1}. ${v.short}</option>`).join('');select.value=step;
+  let rhs=formulas(s.lines);
+  if(s.nudge)rhs+='<details><summary>See a gradient as a tiny experiment</summary><p>Hold class 1’s score fixed. Increase class 0’s score by just 0.001, then recalculate softmax and loss:</p>'+formulas(['Score: −1 → −0.999','Loss: 2.126928 → 2.126047','Loss change / score change ≈ −0.880745'])+'<p>That is close to the exact slope, −0.880797. Smaller nudges approach the exact value. The negative sign tells us the loss goes down as this score goes up.</p></details>';
+  if(s.bars)rhs+=bars(F.probs);
+  if(s.table)rhs+='<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'+tableHTML(s.table);
+  if(s.after)rhs+=`<div class="metric"><div><small>Loss before</small><strong>${fmt(F.loss,6)}</strong></div><div><small>Loss after</small><strong>${fmt(AFTER.loss,6)}</strong></div></div>`+bars(AFTER.probs);
+  if(s.save)rhs+='<button class="download" id="download">Download example model JSON</button><details><summary>What the model file contains</summary><pre id="checkpoint-preview"></pre></details>';
+  document.getElementById('lesson').innerHTML=`<div><div class="eyebrow">${s.phase}</div><h2>${s.title}</h2><p>${s.text}</p><div class="callout">${s.note}</div></div><div class="formulas">${rhs}<p class="annotation">${s.foot}</p></div>`;
+  if(s.save)document.getElementById('checkpoint-preview').textContent=JSON.stringify(checkpoint(),null,2);
+  document.getElementById('previous').disabled=step===0;document.getElementById('next').disabled=step===stages.length-1;
+  document.getElementById('next').textContent=step===stages.length-1?'Walkthrough complete':'Next step →';
+  draw();inspect();
+  history.replaceState(null,'','#step-'+(step+1));
+}
+function go(n){step=Math.max(0,Math.min(stages.length-1,n));selected=null;render();}
+document.getElementById('previous').addEventListener('click',()=>go(step-1));
+document.getElementById('next').addEventListener('click',()=>go(step+1));
+document.getElementById('step-select').addEventListener('change',e=>go(Number(e.target.value)));
+document.addEventListener('click',e=>{
+  const jump=e.target.closest('[data-step]');if(jump){go(Number(jump.dataset.step));return;}
+  const matrix=e.target.closest('[data-matrix]');if(matrix){tableLayer=Number(matrix.dataset.matrix);render();return;}
+  const node=e.target.closest('[data-node]');if(node){const [l,i]=node.dataset.node.split(',').map(Number);selected={kind:'node',l,i};draw();inspect();return;}
+  const edge=e.target.closest('[data-edge]');if(edge){const [l,i,j]=edge.dataset.edge.split(',').map(Number);selected={kind:'edge',l,i,j};draw();inspect();return;}
+  if(e.target.closest('#close-inspector')){selected=null;draw();inspect();return;}
+  if(e.target.closest('#download')){const url=URL.createObjectURL(new Blob([JSON.stringify(checkpoint(),null,2)+'\n'],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='example-trained-network.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+});
+document.addEventListener('keydown',e=>{
+  if(['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName))return;
+  if((e.key==='Enter'||e.key===' ')&&(e.target.hasAttribute('data-node')||e.target.hasAttribute('data-edge'))){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));return;}
+  if(e.key==='ArrowRight'){e.preventDefault();go(step+1);}if(e.key==='ArrowLeft'){e.preventDefault();go(step-1);}
+});
+window.walkthrough={data:D,stages,go,checkpoint,get step(){return step;}};
+const requested=Number(location.hash.replace('#step-',''))-1;
+go(Number.isInteger(requested)&&requested>=0?requested:0);
+</script>
+</body>
+</html>
