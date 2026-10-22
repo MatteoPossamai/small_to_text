@@ -27,7 +27,15 @@ if(BUILD_TESTING)
 
   add_executable(cnn_tests tests/cnn.cpp)
   add_test(NAME cnn COMMAND cnn_tests)
+  add_test(NAME cnn_cli COMMAND ${CMAKE_COMMAND}
+      -DCNN_EXECUTABLE=$<TARGET_FILE:cnn>
+      -DTEST_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cnn_cli.cmake)
 endif()
+
+# Separate CNN training and scoring command; uses the existing encoded dataset.
+add_executable(cnn src/cnn_main.cpp)
+target_compile_options(cnn PRIVATE -O3 -g)
 
 # -----------------
 # Compile audio target

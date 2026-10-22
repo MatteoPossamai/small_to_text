@@ -60,10 +60,6 @@ class CNN {
     return std::max(static_cast<output_t>(0), value);
   }
 
-  [[gnu::always_inline]] inline output_t loss(output_t output) {
-    return -std::log(output);
-  }
-
   void normalize_output_layer();
 
   template <size_t X, size_t Y>
@@ -81,8 +77,8 @@ public:
     input_data = inputs;
   }
 
-  void initialize_random_weights() {
-    std::mt19937 generator(std::random_device{}());
+  void initialize_random_weights(std::uint32_t seed = std::random_device{}()) {
+    std::mt19937 generator(seed);
     auto initialize = [&generator](auto &weights, output_t bound) {
       std::uniform_real_distribution<output_t> distribution(-bound, bound);
       for (auto &row : weights)
@@ -350,62 +346,97 @@ template <size_t NETWORK_IN, size_t BANDS, size_t CONV_NEURONS,
 output_t CNN<NETWORK_IN, BANDS, CONV_NEURONS, WINDOW_SIZE, COMPRESS_RATIO, L1,
              L2, OUT_N>::backprop(const std::array<output_t, OUT_N> &target,
                                   output_t learning_rate) {
-  std::array<output_t, OUT_N> losses = {};
-  std::array<output_t, OUT_N> gradients = {};
+  // Cross-entropy from the logits stays finite even if a probability
+  // underflows to zero. Targets are one-hot or a distribution summing to one.
+  const output_t max_logit =
+      *std::max_element(output_layer.begin(), output_layer.end());
+  output_t exp_sum = 0;
+  for (const auto value : output_layer)
+    exp_sum += std::exp(value - max_logit);
+  const output_t log_sum = std::log(exp_sum);
+
+  std::array<output_t, OUT_N> db2{};
   output_t scalar_loss = 0;
-  for (size_t i = 0; i < losses.size(); i++) {
-    losses[i] = loss(norm_output_layer[i]);
-    scalar_loss += target[i] == 0 ? 0 : losses[i];
-    gradients[i] = norm_output_layer[i] - target[i];
+  for (size_t i = 0; i < OUT_N; ++i) {
+    scalar_loss += target[i] * (log_sum - (output_layer[i] - max_logit));
+    db2[i] = norm_output_layer[i] - target[i];
   }
 
-  // Biases
-  std::array<output_t, L1> db0{};
+  // Work backward through the ordinary layers without updating weights yet.
   std::array<output_t, L2> db1{};
-  std::array<output_t, OUT_N> db2 = gradients;
+  for (size_t i = 0; i < L2; ++i) {
+    output_t error = 0;
+    for (size_t j = 0; j < OUT_N; ++j)
+      error += w2[i][j] * db2[j];
+    db1[i] = layer2[i] > 0 ? error : 0;
+  }
 
-  for (size_t i = 0; i < db2.size(); i++) {
+  std::array<output_t, L1> db0{};
+  for (size_t i = 0; i < L1; ++i) {
+    output_t error = 0;
+    for (size_t j = 0; j < L2; ++j)
+      error += w1[i][j] * db1[j];
+    db0[i] = layer1[i] > 0 ? error : 0;
+  }
+
+  // Error arriving at the averaged convolution outputs. Use the original w0.
+  std::array<output_t, INPUT_N> pooled_error{};
+  for (size_t i = 0; i < INPUT_N; ++i) {
+    for (size_t j = 0; j < L1; ++j)
+      pooled_error[i] += w0[i][j] * db0[j];
+  }
+
+  std::array<std::array<output_t, CONV_NEURONS>, BANDS * WINDOW_SIZE>
+      conv_weight_gradients{};
+  std::array<output_t, CONV_NEURONS> conv_bias_gradients{};
+  for (size_t position = 0; position < POSITIONS; ++position) {
+    const size_t group = position / COMPRESS_RATIO;
+    std::array<output_t, CONV_NEURONS> conv_error{};
+    for (size_t neuron = 0; neuron < CONV_NEURONS; ++neuron) {
+      // An average divides the error equally among its contributing positions.
+      // ReLU blocks the error where the forward result was zero.
+      if (conv_output[position][neuron] > 0)
+        conv_error[neuron] =
+            pooled_error[group * CONV_NEURONS + neuron] / COMPRESS_RATIO;
+      conv_bias_gradients[neuron] += conv_error[neuron];
+    }
+
+    // These weights are shared: sum their contributions from every window.
+    for (size_t k = 0; k < BANDS * WINDOW_SIZE; ++k) {
+      const output_t input = input_data[position * BANDS + k];
+      for (size_t neuron = 0; neuron < CONV_NEURONS; ++neuron)
+        conv_weight_gradients[k][neuron] += input * conv_error[neuron];
+    }
+  }
+
+  // All backward calculations are complete. Now update every parameter.
+  for (size_t i = 0; i < OUT_N; ++i)
     b2[i] -= learning_rate * db2[i];
-  }
-
-  for (size_t i = 0; i < db1.size(); i++) {
-    output_t temp = 0;
-    for (size_t j = 0; j < db2.size(); j++) {
-      temp += w2[i][j] * db2[j];
-    }
-    db1[i] = layer2[i] > 0 ? temp : 0;
+  for (size_t i = 0; i < L2; ++i)
     b1[i] -= learning_rate * db1[i];
-  }
-
-  for (size_t i = 0; i < db0.size(); i++) {
-    output_t temp = 0;
-    for (size_t j = 0; j < db1.size(); j++) {
-      temp += w1[i][j] * db1[j];
-    }
-    db0[i] = layer1[i] > 0 ? temp : 0;
+  for (size_t i = 0; i < L1; ++i)
     b0[i] -= learning_rate * db0[i];
-  }
 
-  // Weights
-  for (size_t i = 0; i < layer2.size(); ++i) {
-    for (size_t j = 0; j < db2.size(); ++j) {
+  for (size_t i = 0; i < L2; ++i) {
+    for (size_t j = 0; j < OUT_N; ++j)
       w2[i][j] -= learning_rate * layer2[i] * db2[j];
-    }
   }
-
-  for (size_t i = 0; i < layer1.size(); ++i) {
-    for (size_t j = 0; j < db1.size(); ++j) {
+  for (size_t i = 0; i < L1; ++i) {
+    for (size_t j = 0; j < L2; ++j)
       w1[i][j] -= learning_rate * layer1[i] * db1[j];
-    }
   }
-
-  for (size_t i = 0; i < input_layer.size(); ++i) {
-    for (size_t j = 0; j < db0.size(); ++j) {
+  for (size_t i = 0; i < INPUT_N; ++i) {
+    for (size_t j = 0; j < L1; ++j)
       w0[i][j] -= learning_rate * input_layer[i] * db0[j];
-    }
   }
 
-  // TODO: impl convolution
+  for (size_t neuron = 0; neuron < CONV_NEURONS; ++neuron)
+    conv_bias[neuron] -= learning_rate * conv_bias_gradients[neuron];
+  for (size_t k = 0; k < BANDS * WINDOW_SIZE; ++k) {
+    for (size_t neuron = 0; neuron < CONV_NEURONS; ++neuron)
+      conv_weights[k][neuron] -=
+          learning_rate * conv_weight_gradients[k][neuron];
+  }
 
   return scalar_loss;
 }

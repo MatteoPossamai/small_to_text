@@ -67,6 +67,109 @@ void test_forward() {
   check(2, -1); // A different recording must not leave stale values either.
 }
 
+void test_backprop() {
+  using GradientModel = CNN<16, 2, 2, 3, 3, 3, 2, 2>;
+  GradientModel model;
+  model.load_weights({{{0.2f, -0.1f},
+                       {-0.1f, 0.15f},
+                       {0.3f, 0.1f},
+                       {0.1f, -0.2f},
+                       {-0.15f, 0.25f},
+                       {0.2f, 0.05f}}},
+                     {{{0.2f, -0.1f, 0.3f},
+                       {-0.15f, 0.25f, 0.1f},
+                       {0.1f, 0.2f, -0.2f},
+                       {0.3f, 0.1f, 0.15f}}},
+                     {{{0.3f, -0.2f}, {-0.1f, 0.25f}, {0.2f, 0.1f}}},
+                     {{{0.4f, -0.3f}, {-0.2f, 0.35f}}}, {0.1f, 0.05f},
+                     {0.4f, -0.5f, 0.3f}, {0.2f, 0.1f}, {0.05f, -0.1f});
+  model.load_inputs({0.2f, -0.4f, 0.8f, 0.1f, -0.3f, 0.7f, 0.6f, -0.2f, -0.5f,
+                     0.4f, 0.9f, -0.6f, 0.3f, 0.2f, -0.7f, 0.5f});
+
+  TemporaryDirectory directory;
+  const auto path = directory.path / "gradients.txt";
+  const auto parameters = [&]() {
+    require(model.to_file(path.string()), "Gradient model save failed");
+    std::ifstream file(path);
+    std::string header;
+    std::getline(file, header);
+    std::vector<output_t> values;
+    output_t value;
+    while (file >> value)
+      values.push_back(value);
+    return values;
+  };
+  const auto load_parameters = [&](const std::vector<output_t> &values) {
+    {
+      std::ofstream file(path);
+      file << "CNN_V1 16 2 2 3 3 3 2 2\n"
+           << std::setprecision(std::numeric_limits<output_t>::max_digits10);
+      for (const auto value : values)
+        file << value << ' ';
+    }
+    require(model.from_file(path.string()), "Gradient model load failed");
+  };
+  const auto original = parameters();
+  require(original.size() == 43, "Unexpected gradient fixture parameter count");
+
+  const auto objective = [&](const std::array<output_t, 2> &target) {
+    model.forward_pass();
+    double value = 0;
+    for (size_t i = 0; i < target.size(); ++i)
+      if (target[i] != 0)
+        value -= target[i] * std::log(static_cast<double>(model.output()[i]));
+    return value;
+  };
+
+  // Compare every bias/weight update against independent finite differences.
+  // The fixture includes shared overlapping windows and inactive ReLUs.
+  for (const std::array<output_t, 2> target :
+       {std::array<output_t, 2>{1, 0}, std::array<output_t, 2>{0.25f, 0.75f}}) {
+    load_parameters(original);
+    const double before = objective(target);
+    constexpr output_t rate = 0.05f;
+    const auto reported_loss = model.backprop(target, rate);
+    require(std::abs(reported_loss - before) < 1e-6,
+            "Backprop returned the wrong pre-update loss");
+    const auto updated = parameters();
+    require(objective(target) < before,
+            "CNN learning step did not reduce loss");
+
+    for (size_t i = 0; i < original.size(); ++i) {
+      auto perturbed = original;
+      constexpr output_t epsilon = 0.001f;
+      perturbed[i] = original[i] + epsilon;
+      load_parameters(perturbed);
+      const double plus = objective(target);
+      const auto upper = perturbed[i];
+      perturbed[i] = original[i] - epsilon;
+      load_parameters(perturbed);
+      const double minus = objective(target);
+      const double numeric = (plus - minus) / (upper - perturbed[i]);
+      const double analytic = (original[i] - updated[i]) / rate;
+      const double tolerance =
+          0.0002 + 0.01 * (std::abs(numeric) + std::abs(analytic));
+      if (std::abs(numeric - analytic) > tolerance)
+        throw std::runtime_error("CNN gradient mismatch at parameter " +
+                                 std::to_string(i));
+    }
+  }
+
+  load_parameters(original);
+  objective({1, 0});
+  model.backprop({1, 0}, 0);
+  require(parameters() == original, "Zero learning rate changed parameters");
+
+  // A tiny target probability can underflow; the loss should still be finite.
+  model.load_weights({}, {}, {}, {}, {}, {}, {}, {-1000, 1000});
+  model.forward_pass();
+  const auto extreme_loss = model.backprop({1, 0}, 0.1f);
+  require(std::isfinite(extreme_loss) && std::abs(extreme_loss - 2000) < 1e-5,
+          "Extreme logits produced an invalid loss");
+  for (const auto value : parameters())
+    require(std::isfinite(value), "Extreme logits produced invalid parameters");
+}
+
 void test_files() {
   TemporaryDirectory directory;
   const auto input = directory.path / "input.txt";
@@ -175,8 +278,10 @@ int main() {
   try {
     test_files();
     test_forward();
+    test_backprop();
     std::cout << "Passed: CNN files, dimensions, malformed files and "
-                 "initialization, convolution, averaging and forward pass\n";
+                 "initialization, convolution, averaging, forward pass and "
+                 "backprop\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;
