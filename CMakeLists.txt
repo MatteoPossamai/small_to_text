@@ -24,6 +24,9 @@ if(BUILD_TESTING)
 
   add_executable(network_tests tests/network.cpp)
   add_test(NAME network COMMAND network_tests)
+
+  add_executable(cnn_tests tests/cnn.cpp)
+  add_test(NAME cnn COMMAND cnn_tests)
 endif()
 
 # -----------------
