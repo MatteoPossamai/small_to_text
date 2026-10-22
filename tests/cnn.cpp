@@ -35,6 +35,38 @@ std::string read_file(const std::filesystem::path &path) {
   return contents.str();
 }
 
+void test_forward() {
+  CNN<12, 2, 2, 3, 2, 2, 2, 2> model;
+  model.load_weights({{{1, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 1}}},
+                     {{{1, 0}, {0, 0.01f}, {1, 0}, {0, 0.01f}}},
+                     {{{1, 0}, {0, 1}}}, {{{0.25f, -0.25f}, {0.5f, 0.25f}}},
+                     {-2, 1}, {0.5f, 0.08f}, {-0.5f, 0.5f}, {0.125f, -0.25f});
+
+  const auto check = [&](double first_logit, double second_logit) {
+    model.forward_pass();
+    const double expected = 1.0 / (1.0 + std::exp(second_logit - first_logit));
+    require(std::isfinite(model.output()[0]) &&
+                std::isfinite(model.output()[1]) &&
+                std::abs(model.output()[0] - expected) < 1e-6 &&
+                std::abs(model.output()[1] - (1.0 - expected)) < 1e-6,
+            "CNN forward pass differs from hand-calculated probabilities");
+  };
+
+  // Two bands per row. The neurons select the window's first and last values.
+  // After biases and ReLU: [0,31], [1,41], [3,51], [5,61].
+  // Averaging gives [0.5,36,4,56]; ordinary layers produce logits [2,-1].
+  model.load_inputs({1, 10, 3, 20, 5, 30, 7, 40, 9, 50, 11, 60});
+  check(2, -1);
+  check(2, -1); // Repeating a call must not accumulate old results.
+
+  // Zero input still exercises convolution biases: pooled [0,1,0,1].
+  model.load_inputs({});
+  check(0.425, -0.1);
+
+  model.load_inputs({1, 10, 3, 20, 5, 30, 7, 40, 9, 50, 11, 60});
+  check(2, -1); // A different recording must not leave stale values either.
+}
+
 void test_files() {
   TemporaryDirectory directory;
   const auto input = directory.path / "input.txt";
@@ -142,8 +174,9 @@ void test_files() {
 int main() {
   try {
     test_files();
+    test_forward();
     std::cout << "Passed: CNN files, dimensions, malformed files and "
-                 "initialization\n";
+                 "initialization, convolution, averaging and forward pass\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

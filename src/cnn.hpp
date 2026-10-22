@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <limits>
 #include <random>
+#include <span>
 #include <string>
 
 template <size_t NETWORK_IN, size_t BANDS, size_t CONV_NEURONS,
@@ -25,8 +26,9 @@ class CNN {
                 "The averaging groups must cover all convolution positions");
 
   // Static constexpr
+  static constexpr size_t POSITIONS = NETWORK_IN / BANDS - WINDOW_SIZE + 1;
   static constexpr size_t INPUT_N =
-      ((NETWORK_IN / BANDS) - (WINDOW_SIZE - 1)) / COMPRESS_RATIO *
+      POSITIONS / COMPRESS_RATIO *
       CONV_NEURONS; // ((1580 ÷ 20) - (5 - 1)) / 3 * 16 = 400 in the example
 
   // Inputs
@@ -36,6 +38,8 @@ class CNN {
   std::array<std::array<output_t, CONV_NEURONS>, BANDS * WINDOW_SIZE>
       conv_weights{};
   std::array<output_t, CONV_NEURONS> conv_bias{};
+  // Keep each position's output after ReLU for backpropagation.
+  std::array<std::array<output_t, CONV_NEURONS>, POSITIONS> conv_output{};
 
   // Vanilla NN side
   std::array<output_t, INPUT_N> input_layer{};
@@ -63,8 +67,8 @@ class CNN {
   void normalize_output_layer();
 
   template <size_t X, size_t Y>
-  void matrix_mul(std::array<output_t, X> &inputs,
-                  std::array<std::array<output_t, Y>, X> &weights,
+  void matrix_mul(std::span<const output_t> inputs,
+                  const std::array<std::array<output_t, Y>, X> &weights,
                   std::array<output_t, Y> &res);
 
 public:
@@ -132,8 +136,9 @@ template <size_t NETWORK_IN, size_t BANDS, size_t CONV_NEURONS,
           size_t OUT_N>
 template <size_t X, size_t Y>
 void CNN<NETWORK_IN, BANDS, CONV_NEURONS, WINDOW_SIZE, COMPRESS_RATIO, L1, L2,
-         OUT_N>::matrix_mul(std::array<output_t, X> &inputs,
-                            std::array<std::array<output_t, Y>, X> &weights,
+         OUT_N>::matrix_mul(std::span<const output_t> inputs,
+                            const std::array<std::array<output_t, Y>, X>
+                                &weights,
                             std::array<output_t, Y> &res) {
   res.fill(0);
   for (size_t i = 0; i < X; ++i) {
@@ -300,7 +305,28 @@ template <size_t NETWORK_IN, size_t BANDS, size_t CONV_NEURONS,
           size_t OUT_N>
 void CNN<NETWORK_IN, BANDS, CONV_NEURONS, WINDOW_SIZE, COMPRESS_RATIO, L1, L2,
          OUT_N>::forward_pass() {
-  // TODO: convolution
+  input_layer.fill(0);
+  std::span<const output_t> input_view(input_data);
+  for (size_t position = 0; position < POSITIONS; ++position) {
+    auto window = input_view.subspan(position * BANDS, WINDOW_SIZE * BANDS);
+    auto &result = conv_output[position];
+
+    matrix_mul(window, conv_weights, result);
+    for (size_t neuron = 0; neuron < CONV_NEURONS; ++neuron) {
+      result[neuron] = ReLU(result[neuron] + conv_bias[neuron]);
+    }
+
+    // Consecutive positions share an averaging group, preserving each neuron.
+    const size_t group = position / COMPRESS_RATIO;
+    for (size_t neuron = 0; neuron < CONV_NEURONS; ++neuron) {
+      input_layer[group * CONV_NEURONS + neuron] += result[neuron];
+    }
+  }
+
+  for (auto &value : input_layer) {
+    value /= COMPRESS_RATIO;
+  }
+
   matrix_mul(input_layer, w0, layer1);
   for (size_t i = 0; i < L1; ++i) {
     layer1[i] = ReLU(layer1[i] + b0[i]);
