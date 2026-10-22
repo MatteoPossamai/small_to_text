@@ -1,4 +1,6 @@
 build/
 weights/
+weights_log/
+weights_mel/
 data/
 a.out

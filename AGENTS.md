@@ -2,6 +2,11 @@
 
 This file gives context to any agent or tool working in this repo. Read it fully before proposing plans, generating code, or answering questions.
 
+## Experiment history
+
+Read [docs/evolution.md](docs/evolution.md) before proposing training experiments.
+It records the feature comparisons and measured results.
+
 ## Goals of the repo
 
 Simple, private project for the user to build a training and inference system for a simple voice based neural network.
