@@ -11,7 +11,7 @@
 namespace {
 
 namespace fs = std::filesystem;
-constexpr size_t CONV_NEURONS = 16;
+constexpr size_t CONV_NEURONS = 32;
 constexpr size_t WINDOW_SIZE = 5;
 constexpr size_t COMPRESS_RATIO = 3;
 constexpr size_t POOLED_INPUTS =
@@ -46,7 +46,7 @@ void usage(const char *program) {
       << "  --resume             Continue from MODEL_PATH instead of "
          "initializing\n\n"
       << "Uses " << NUM_BANDS
-      << " bands, 16 convolution neurons, a five-row window,\n"
+      << " bands, " << CONV_NEURONS << " convolution neurons, a five-row window,\n"
       << "averaging by three, and ordinary layers " << POOLED_INPUTS
       << " -> 128 -> 64 -> " << N_LABELS << ".\n";
 }

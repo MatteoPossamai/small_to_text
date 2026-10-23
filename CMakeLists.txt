@@ -80,3 +80,10 @@ target_compile_definitions(inference PRIVATE
 target_compile_options(inference PRIVATE
     -O3 -ffast-math -g
 )
+
+# CNN inference uses the 32-neuron model directly, without the legacy symlink.
+add_executable(inference_cnn src/inference_cnn.cpp)
+target_compile_definitions(inference_cnn PRIVATE
+    CNN_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/cnn32_20band_500.txt"
+)
+target_compile_options(inference_cnn PRIVATE -O3 -g)

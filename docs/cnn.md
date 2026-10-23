@@ -59,3 +59,16 @@ files use the `CNN_V1` format and are scored with this executable.
 
 The program uses every sample in the supplied training directory. It does not
 create a validation split or choose the best validation checkpoint automatically.
+
+## Infer a word from a WAV file
+
+`inference_cnn` uses the 32-neuron CNN and defaults directly to
+`network/cnn32_20band_500.txt`. It does not use `network/speech_commands.txt`.
+
+```bash
+cmake --build build --target inference_cnn
+./build/inference_cnn ~/Downloads/speech_commands_v0.02/one/00176480_nohash_0.wav
+```
+
+An optional second argument selects another model with the same architecture:
+`./build/inference_cnn input.wav path/to/model.txt`.
