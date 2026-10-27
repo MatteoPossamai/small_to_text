@@ -7,8 +7,9 @@ window, trained from scratch for 500 epochs using seed `12345`. It reached
 96.26% on training data and 82.90% on the 11,005-recording scoring set
 (9,123 correct). The file's recorded SHA-256 is
 `882c37c59418972213ed45074b85e69bfc0f7a50f9b21b8bee81cbae1ac74b0c`.
-The original file was lost with its worktree; recreation is pending verification
-before this result can be reproduced from the canonical model file.
+The original file was lost with its worktree. A seeded recreation matched
+the exact original checksum and scoring result. The selected artifact is
+`network/4_cnn32_window8_20band_500.txt`.
 
 | Configuration | Training accuracy | Scoring accuracy | Notes |
 |---|---:|---:|---|

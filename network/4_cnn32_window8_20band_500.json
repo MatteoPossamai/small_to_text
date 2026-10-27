@@ -1,0 +1,33 @@
+{
+  "format": "CNN_V1",
+  "input_values": 1580,
+  "frequency_bands": 20,
+  "time_rows": 79,
+  "convolution_neurons": 32,
+  "window_rows": 8,
+  "averaging_ratio": 3,
+  "ordinary_layers": [
+    768,
+    128,
+    64,
+    36
+  ],
+  "epochs": 500,
+  "seed": 12345,
+  "initial_learning_rate": 0.005,
+  "maximum_shift_rows": 4,
+  "validation_split": false,
+  "training": {
+    "total": 94830,
+    "correct": 91284,
+    "accuracy_percent": 96.26
+  },
+  "scoring": {
+    "total": 11005,
+    "correct": 9123,
+    "accuracy_percent": 82.9
+  },
+  "sha256": "882c37c59418972213ed45074b85e69bfc0f7a50f9b21b8bee81cbae1ac74b0c",
+  "exact_recreation_verified": true,
+  "verification_time": "2026-10-27T20:34:17.352492+00:00"
+}

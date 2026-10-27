@@ -1,0 +1,43 @@
+Loaded 11005 samples (20 bands).
+
+Total: 11005	Correct: 9123
+Accuracy: 82.90%
+
+Per-label results (weakest accuracy first):
+Label                   Total  Correct   WrongAccuracy (%)  Most common wrong prediction Count
+learn                     161       99      62       61.49  nine                         15
+follow                    172      109      63       63.37  four                         28
+forward                   155      101      54       65.16  four                         31
+tree                      193      133      60       68.91  three                        36
+go                        402      304      98       75.62  down                         27
+bed                       207      158      49       76.33  bird                         7
+four                      400      306      94       76.50  forward                      16
+bird                      185      145      40       78.38  learn                        7
+no                        405      318      87       78.52  go                           23
+wow                       206      163      43       79.13  go                           7
+dog                       220      175      45       79.55  go                           11
+three                     405      326      79       80.49  tree                         29
+right                     396      319      77       80.56  five                         15
+five                      445      360      85       80.90  right                        17
+off                       402      326      76       81.09  up                           27
+down                      406      330      76       81.28  go                           20
+cat                       194      158      36       81.44  two                          6
+on                        396      326      70       82.32  off                          13
+one                       399      330      69       82.71  nine                         9
+up                        425      352      73       82.82  off                          18
+two                       424      352      72       83.02  go                           17
+nine                      408      340      68       83.33  learn                        15
+backward                  165      142      23       86.06  down                         3
+left                      412      356      56       86.41  learn                        9
+sheila                    212      185      27       87.26  zero                         7
+visual                    165      144      21       87.27  zero                         6
+happy                     203      178      25       87.68  seven                        4
+marvin                    195      171      24       87.69  learn                        5
+eight                     408      363      45       88.97  three                        8
+house                     191      170      21       89.01  go                           3
+zero                      418      376      42       89.95  two                          9
+yes                       419      384      35       91.65  left                         14
+stop                      411      379      32       92.21  up                           7
+seven                     406      376      30       92.61  six                          7
+six                       394      369      25       93.65  eight                        4
+_background_noise_          0        0       0         N/A  -                            0

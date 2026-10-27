@@ -47,7 +47,7 @@ This will create what is required.
 ./build/cnn5 score weights/scoring network/3_cnn32_window5_20band_600.txt
 ```
 
-### 4. CNN, 32 neurons, 8 rows, 500 epochs - 82.90% (recreation pending)
+### 4. CNN, 32 neurons, 8 rows, 500 epochs - 82.90%
 
 ```bash
 ./build/cnn8 score weights/scoring network/4_cnn32_window8_20band_500.txt

@@ -5,7 +5,8 @@ The selected model is the 32-neuron CNN with an eight-row window, trained for
 8-row window; pooling averages groups of three positions, producing 768 values
 for the `128 → 64 → 36` classifier.
 
-Recreation status: pending verification.
+Recreation status: verified. The exact recorded SHA-256 and
+9,123 / 11,005 scoring result were reproduced.
 
 The original winning file was lost when its worktree was removed. Its recorded
 SHA-256 was
