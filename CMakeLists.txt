@@ -31,11 +31,33 @@ if(BUILD_TESTING)
       -DCNN_EXECUTABLE=$<TARGET_FILE:cnn>
       -DTEST_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cnn_cli.cmake)
+  add_test(NAME model_profiles COMMAND ${CMAKE_COMMAND}
+      -DCNN16_EXE=$<TARGET_FILE:cnn16>
+      -DCNN5_EXE=$<TARGET_FILE:cnn5>
+      -DCNN8_EXE=$<TARGET_FILE:cnn8>
+      -DCNN_DEFAULT_EXE=$<TARGET_FILE:cnn>
+      -DTEST_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/model_profiles.cmake)
 endif()
 
-# Separate CNN training and scoring command; uses the existing encoded dataset.
-add_executable(cnn src/cnn_main.cpp)
-target_compile_options(cnn PRIVATE -O3 -g)
+# Build the same source for each saved model shape. No neural-network code changes.
+function(add_cnn_variant name neurons window model)
+  add_executable(${name} src/cnn_main.cpp)
+  target_compile_definitions(${name} PRIVATE CNN_NEURONS=${neurons} CNN_WINDOW=${window})
+  target_compile_options(${name} PRIVATE -O3 -g)
+
+  add_executable(inference_${name} src/inference_cnn.cpp)
+  target_compile_definitions(inference_${name} PRIVATE
+      CNN_NEURONS=${neurons} CNN_WINDOW=${window}
+      CNN_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/${model}")
+  target_compile_options(inference_${name} PRIVATE -O3 -g)
+endfunction()
+
+add_cnn_variant(cnn16 16 5 2_cnn16_window5_20band_500.txt)
+add_cnn_variant(cnn5 32 5 3_cnn32_window5_20band_500.txt)
+add_cnn_variant(cnn8 32 8 4_cnn32_window8_20band_500.txt)
+# Preserve the existing command names as the default eight-row build.
+add_cnn_variant(cnn 32 8 4_cnn32_window8_20band_500.txt)
 
 # -----------------
 # Compile audio target
@@ -64,7 +86,7 @@ target_compile_options(train PRIVATE
 # -----------------
 add_executable(scoring src/scoring.cpp)
 target_compile_definitions(scoring PRIVATE
-    NETWORK_MODEL_PATH="${NETWORK_MODEL_PATH}"
+    NETWORK_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/1_mlp_timeshift_20band_300.txt"
 )
 target_compile_options(scoring PRIVATE
     -O3 -ffast-math -g
@@ -75,15 +97,9 @@ target_compile_options(scoring PRIVATE
 # -----------------
 add_executable(inference src/inference.cpp)
 target_compile_definitions(inference PRIVATE
-    NETWORK_MODEL_PATH="${NETWORK_MODEL_PATH}"
+    NETWORK_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/1_mlp_timeshift_20band_300.txt"
 )
 target_compile_options(inference PRIVATE
     -O3 -ffast-math -g
 )
 
-# CNN inference uses the 32-neuron model directly, without the legacy symlink.
-add_executable(inference_cnn src/inference_cnn.cpp)
-target_compile_definitions(inference_cnn PRIVATE
-    CNN_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/cnn32_20band_500.txt"
-)
-target_compile_options(inference_cnn PRIVATE -O3 -g)

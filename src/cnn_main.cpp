@@ -11,8 +11,8 @@
 namespace {
 
 namespace fs = std::filesystem;
-constexpr size_t CONV_NEURONS = 32;
-constexpr size_t WINDOW_SIZE = 5;
+constexpr size_t CONV_NEURONS = CNN_NEURONS;
+constexpr size_t WINDOW_SIZE = CNN_WINDOW;
 constexpr size_t COMPRESS_RATIO = 3;
 constexpr size_t POOLED_INPUTS =
     (NETWORK_IN_VALUES / NUM_BANDS - WINDOW_SIZE + 1) / COMPRESS_RATIO *
@@ -45,8 +45,8 @@ void usage(const char *program) {
          "disables)\n"
       << "  --resume             Continue from MODEL_PATH instead of "
          "initializing\n\n"
-      << "Uses " << NUM_BANDS
-      << " bands, " << CONV_NEURONS << " convolution neurons, a five-row window,\n"
+      << "Uses " << NUM_BANDS << " bands, " << CONV_NEURONS
+      << " convolution neurons, a " << WINDOW_SIZE << "-row window,\n"
       << "averaging by three, and ordinary layers " << POOLED_INPUTS
       << " -> 128 -> 64 -> " << N_LABELS << ".\n";
 }

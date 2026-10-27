@@ -13,9 +13,11 @@ int main(int argc, char **argv) {
   }
 
   const std::string model_path = argc == 3 ? argv[2] : CNN_MODEL_PATH;
-  CNN<NETWORK_IN_VALUES, NUM_BANDS, 32, 5, 3, 128, 64, N_LABELS> network;
+  CNN<NETWORK_IN_VALUES, NUM_BANDS, CNN_NEURONS, CNN_WINDOW, 3, 128, 64,
+      N_LABELS>
+      network;
   if (!network.from_file(model_path)) {
-    std::cerr << "Unable to load 32-neuron CNN model: " << model_path
+    std::cerr << "Unable to load CNN model for this build: " << model_path
               << std::endl;
     return 1;
   }

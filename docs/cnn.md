@@ -1,74 +1,69 @@
 # CNN training and scoring
 
-The separate `cnn` executable uses existing encoded recordings from `weights/`.
-It does not change the ordinary `train` and `scoring` commands.
+The selected model is the 32-neuron CNN with an eight-row window, trained for
+500 epochs. Its input is 79 time rows × 20 frequency bands. Each of 32 sliding neurons sees an
+8-row window; pooling averages groups of three positions, producing 768 values
+for the `128 → 64 → 36` classifier.
 
-With the current configuration, the model is:
+Recreation status: pending verification.
 
-```text
-79 time rows × 20 bands
-    → 16 sliding neurons, each seeing five rows
-    → average groups of three positions
-    → 400 → 128 → 64 → 36 word predictions
-```
+The original winning file was lost when its worktree was removed. Its recorded
+SHA-256 was
+`882c37c59418972213ed45074b85e69bfc0f7a50f9b21b8bee81cbae1ac74b0c`.
+The canonical recreated model path is
+`network/4_cnn32_window8_20band_500.txt`; the status above will be updated only
+after the recreated file and score are checked against the recorded result.
 
-The architecture is selected in `src/cnn_main.cpp`. Epochs, learning rate, seed,
-and maximum time shift are command-line options. `./build/cnn --help` lists them.
+The older five-row checkpoints use `cnn5` (32 neurons) or `cnn16` (16 neurons).
+The complete filename index and matching commands are in
+[network/README.md](../network/README.md). `cnn8` is the selected eight-row build;
+`cnn` keeps the same eight-row defaults for existing commands.
 
-Build:
+Build the executable:
 
 ```bash
 cmake -S . -B build
 cmake --build build --target cnn -j 2
 ```
 
-Train and then grade on both datasets (choose an available CPU):
+Train a fresh model (use a new filename so an existing winner is not overwritten):
 
 ```bash
-poppi_pop --cpu 1 -- bash -ec '
-  model=network/cnn_20band_500.txt
-  ./build/cnn train weights/training "$model" \
-    --epochs 500 --learning-rate 0.005 --seed 12345 --shift 4
-  ./build/cnn score weights/training "$model"
-  ./build/cnn score weights/scoring "$model"
-'
+model=network/cnn32_window8_20band_500_retrained.txt
+poppi_pop --cpu 1 -- ./build/cnn train weights/training "$model" \
+  --epochs 500 --learning-rate 0.005 --seed 12345 --shift 4
+./build/cnn score weights/training "$model"
+./build/cnn score weights/scoring "$model"
 ```
 
-Run the wrapper inside tmux if it should survive closing the terminal.
+Run long jobs inside tmux so they survive closing the terminal. Choose an
+available CPU for `poppi_pop`.
 
-Training initializes a new model and refuses to overwrite an existing model.
-It saves a checkpoint every ten epochs and at completion. It halves the learning
-rate after ten epochs without a 0.1% improvement in mean training loss, down to
-0.00001 (or the initial rate if lower). Scoring reports overall accuracy and
-per-label results, with the weakest labels first.
+The selected run used all 94,830 training recordings, with no validation split;
+the scoring set has 11,005 recordings. Training saves checkpoints every ten
+epochs and at completion. The learning rate is halved after ten epochs without
+a 0.1% training-loss improvement, down to `0.00001`.
 
-Continue an existing model for 100 additional epochs:
+To resume, first copy the model to a new path, then pass that copy with
+`--resume`:
 
 ```bash
-./build/cnn train weights/training network/cnn_20band_500.txt \
-  --resume --epochs 100 --learning-rate 0.001
+cp --update=none-fail network/4_cnn32_window8_20band_500.txt network/cnn32_window8_resume600.txt
+poppi_pop --cpu 1 -- ./build/cnn train weights/training network/cnn32_window8_resume600.txt \
+  --resume --epochs 100 --learning-rate 0.00001
 ```
 
-Resuming restores learned weights and biases. The learning-rate schedule and
-random sequence start again; this is not an exact continuation of an interrupted
-run. Use `--shift 0` to disable random time shifting.
+The command accepts `--epochs`, `--learning-rate`, `--seed`, `--shift`, and
+`--resume`. It uses the configured 32-neuron, eight-row architecture. The
+loader requires 20-band recordings and rejects non-finite values; do not pass
+`weights_nonuniform40/`.
 
-The loader checks exact sample sizes and rejects non-finite values. This build
-expects 20-band recordings, so do not pass `weights_nonuniform40/`. CNN model
-files use the `CNN_V1` format and are scored with this executable.
-
-The program uses every sample in the supplied training directory. It does not
-create a validation split or choose the best validation checkpoint automatically.
-
-## Infer a word from a WAV file
-
-`inference_cnn` uses the 32-neuron CNN and defaults directly to
-`network/cnn32_20band_500.txt`. It does not use `network/speech_commands.txt`.
+`inference_cnn` uses the same selected architecture and defaults to
+`network/4_cnn32_window8_20band_500.txt`:
 
 ```bash
 cmake --build build --target inference_cnn
 ./build/inference_cnn ~/Downloads/speech_commands_v0.02/one/00176480_nohash_0.wav
 ```
 
-An optional second argument selects another model with the same architecture:
-`./build/inference_cnn input.wav path/to/model.txt`.
+An optional second argument selects another compatible model file.

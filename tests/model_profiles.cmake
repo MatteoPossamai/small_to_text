@@ -1,0 +1,51 @@
+foreach(name CNN16_EXE CNN5_EXE CNN8_EXE CNN_DEFAULT_EXE TEST_OUTPUT_DIR)
+  if(NOT DEFINED ${name})
+    message(FATAL_ERROR "${name} is required")
+  endif()
+endforeach()
+
+set(root "${TEST_OUTPUT_DIR}/model_profiles")
+file(REMOVE_RECURSE "${root}")
+file(MAKE_DIRECTORY "${root}/dataset/_background_noise_")
+# 1,580 native floats, each with the same finite byte pattern. Normalization
+# turns the constant sample into zeros, so all three zero-weight models classify it.
+string(REPEAT "a" 6320 sample)
+file(WRITE "${root}/dataset/_background_noise_/sample.raw" "${sample}")
+
+function(write_model path neurons window)
+  math(EXPR pooled "(79 - ${window} + 1) / 3 * ${neurons}")
+  math(EXPR count "${neurons} * ${window} * 20 + ${neurons} + ${pooled} * 128 + 128 + 128 * 64 + 64 + 64 * 36 + 36")
+  file(WRITE "${path}" "CNN_V1 1580 20 ${neurons} ${window} 3 128 64 36\n")
+  string(REPEAT "0 " ${count} values)
+  file(APPEND "${path}" "${values}\n")
+endfunction()
+
+function(expect_score name executable model)
+  execute_process(COMMAND "${executable}" score "${root}/dataset" "${model}"
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+  if(NOT "${result}" STREQUAL "0" OR NOT output MATCHES "Accuracy: 100\\.00%")
+    message(FATAL_ERROR "${name} failed (result=${result})\n${output}\n${error}")
+  endif()
+endfunction()
+
+set(m16 "${root}/cnn16.model")
+set(m5 "${root}/cnn5.model")
+set(m8 "${root}/cnn8.model")
+write_model("${m16}" 16 5)
+write_model("${m5}" 32 5)
+write_model("${m8}" 32 8)
+expect_score(cnn16 "${CNN16_EXE}" "${m16}")
+expect_score(cnn5 "${CNN5_EXE}" "${m5}")
+expect_score(cnn8 "${CNN8_EXE}" "${m8}")
+expect_score(cnn-default "${CNN_DEFAULT_EXE}" "${m8}")
+
+foreach(pair "${CNN16_EXE}|${m5}" "${CNN5_EXE}|${m8}" "${CNN8_EXE}|${m16}")
+  string(REPLACE "|" ";" fields "${pair}")
+  list(GET fields 0 executable)
+  list(GET fields 1 model)
+  execute_process(COMMAND "${executable}" score "${root}/dataset" "${model}"
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+  if("${result}" STREQUAL "0" OR NOT "${error}" MATCHES "CNN.*(profile|shape|compatible|header)")
+    message(FATAL_ERROR "Incompatible model was not rejected before scoring (result=${result})\n${output}\n${error}")
+  endif()
+endforeach()

@@ -1,23 +1,43 @@
 # Evolution
 
-## Audio feature comparison
+## CNN comparisons
 
-Three 300-epoch runs: same 1580 → 128 → 64 → 36 network, seed 12345,
+The selected configuration is the 32-neuron CNN with an eight-row time
+window, trained from scratch for 500 epochs using seed `12345`. It reached
+96.26% on training data and 82.90% on the 11,005-recording scoring set
+(9,123 correct). The file's recorded SHA-256 is
+`882c37c59418972213ed45074b85e69bfc0f7a50f9b21b8bee81cbae1ac74b0c`.
+The original file was lost with its worktree; recreation is pending verification
+before this result can be reproduced from the canonical model file.
+
+| Configuration | Training accuracy | Scoring accuracy | Notes |
+|---|---:|---:|---|
+| 16 neurons, 5-row window, 500 epochs | 91.72% | 81.59% | Earlier baseline |
+| 32 neurons, 5-row window, 500 epochs | - | 82.43% | Training result not recorded |
+| 32 neurons, 5-row window, 600 epochs | 96.12% | 82.45% | 500-epoch run continued 100 epochs |
+| 32 neurons, 5-row window, 700 epochs | 96.14% | 82.45% | Continued 200 epochs; seed `12346` |
+| 32 neurons, 8-row window, 250 epochs | 94.31% | 82.76% | Fresh run |
+| **32 neurons, 8-row window, 500 epochs** | **96.26%** | **82.90%** | **Selected; 9,123 / 11,005** |
+| 32 neurons, 8-row window, 600 epochs | 96.28% | 82.82% | Continued 100 epochs; scoring fell slightly |
+| 32 neurons, 12-row window, 300 epochs | 94.67% | 82.20% | Fresh run |
+| 32 neurons, 12-row window, +200 epochs | - | - | User stopped after 59/200 additional epochs; no completed 500-epoch result |
+
+These are exploratory single-seed comparisons, not a broad benchmark. The
+12-row extension was stopped after its completed 300-epoch score trailed the
+selected eight-row model. The 85% scoring goal has not been reached.
+
+## Audio features
+
+Three 300-epoch runs used the same 1,580 → 128 → 64 → 36 network, seed `12345`,
 sorted recording order, ordinary sampling, and random time shifts up to 50 ms.
-Learning-rate settings and the training/scoring split were unchanged.
 
 | Features | Dataset | Training accuracy | Scoring accuracy |
 |---|---|---:|---:|
-| Original equal-width bands, square-root energy | `weights/` | 84.63% | **77.08%** |
+| Equal-width bands, square-root energy | `weights/` | 84.63% | **77.08%** |
 | Equal-width bands, `log10(1 + energy)` | `weights_log/` | 67.02% | 64.22% |
 | Overlapping mel bands, `log10(1 + energy)` | `weights_mel/` | 77.63% | 72.85% |
 
-All variants used 20 bands. Original features performed best in this comparison;
-neither log-only nor mel + log improved accuracy. Keep original features as the
-baseline. This does not rule out other log/mel configurations.
-
-An earlier original-feature run scored 77.23%, with different random starting
-conditions. The goal remains 85% scoring accuracy; it has not been reached.
-
-The working encoder still contains the provisional logarithm change. The
-original-feature result above used the existing `weights/` files.
+Original features performed best in this comparison. The current encoder uses
+square-root band energy with per-clip min-max scaling; it is not the provisional
+logarithm version. Keep the original features as the baseline. This comparison
+does not rule out other log or mel configurations.
