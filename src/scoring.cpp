@@ -74,8 +74,6 @@ int main(int argc, char **argv) {
 
   size_t total_scoring = 0;
   size_t total_correct = 0;
-  std::array<std::array<size_t, N_LABELS>, N_LABELS> confusion{};
-  std::array<size_t, N_LABELS> label_totals{};
 
   for (const auto &element : scoring_dataset) {
     const auto &[weights, result] = element;
@@ -84,10 +82,6 @@ int main(int argc, char **argv) {
     const auto &arr = network.output();
     auto idx =
         std::distance(arr.begin(), std::max_element(arr.begin(), arr.end()));
-    auto actual = std::distance(
-        result.begin(), std::max_element(result.begin(), result.end()));
-    ++confusion[actual][idx];
-    ++label_totals[actual];
     total_scoring++;
     total_correct += result[idx] == 1 ? 1 : 0;
   }
@@ -99,51 +93,5 @@ int main(int argc, char **argv) {
             << std::fixed << std::setprecision(2)
             << (100.0 * total_correct / total_scoring) << "%" << std::endl;
 
-  std::array<size_t, N_LABELS> label_order{};
-  for (size_t i = 0; i < N_LABELS; ++i)
-    label_order[i] = i;
-  std::stable_sort(label_order.begin(), label_order.end(),
-                   [&](size_t left, size_t right) {
-                     if (label_totals[left] == 0)
-                       return false;
-                     if (label_totals[right] == 0)
-                       return true;
-                     return static_cast<double>(confusion[left][left]) /
-                                label_totals[left] <
-                            static_cast<double>(confusion[right][right]) /
-                                label_totals[right];
-                   });
-
-  std::cout << "\nPer-label results (weakest accuracy first):\n"
-            << std::left << std::setw(21) << "Label" << std::right
-            << std::setw(8) << "Total" << std::setw(9) << "Correct"
-            << std::setw(8) << "Wrong" << std::setw(12) << "Accuracy (%)"
-            << "  " << std::left << std::setw(29)
-            << "Most common wrong prediction" << std::right << "Count\n";
-
-  for (const auto label : label_order) {
-    const auto total = label_totals[label];
-    const auto correct = confusion[label][label];
-    size_t wrong_prediction = 0;
-    size_t wrong_count = 0;
-    for (size_t predicted = 0; predicted < N_LABELS; ++predicted) {
-      if (predicted != label && confusion[label][predicted] > wrong_count) {
-        wrong_prediction = predicted;
-        wrong_count = confusion[label][predicted];
-      }
-    }
-
-    std::cout << std::left << std::setw(21) << LABELS_MAPPINGS[label]
-              << std::right << std::setw(8) << total << std::setw(9) << correct
-              << std::setw(8) << total - correct << std::setw(12);
-    if (total == 0)
-      std::cout << "N/A";
-    else
-      std::cout << 100.0 * correct / total;
-    std::cout << "  " << std::left << std::setw(29)
-              << (wrong_count == 0 ? std::string_view{"-"}
-                                   : LABELS_MAPPINGS[wrong_prediction])
-              << std::right << wrong_count << '\n';
-  }
   return 0;
 }

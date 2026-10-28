@@ -7,6 +7,7 @@
 #include "cnn.hpp"
 #endif
 #include "mask.hpp"
+#include "time_warp.hpp"
 #include "network_utils.hpp"
 #include <charconv>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <vector>
+#include <unistd.h>
 
 namespace {
 
@@ -38,6 +40,9 @@ struct Options {
   int shift = 4;
   bool resume = false;
   bool mask = false;
+  size_t mask_time_width = 1;
+  size_t mask_frequency_width = 1;
+  int warp = 0;
 #ifdef CNN_EXPERIMENTAL
   output_t l2 = 0;
 #endif
@@ -59,6 +64,9 @@ void usage(const char *program) {
       << "  --l2 VALUE           L2 penalty strength (default: 0)\n"
 #endif
       << "  --mask               Mask one random band or time row during training\n"
+      << "  --mask-time-width N  Maximum adjacent rows to mask (default: 1)\n"
+      << "  --mask-frequency-width N Maximum adjacent bands to mask (default: 1)\n"
+      << "  --warp N             Maximum midpoint displacement in rows (default: 0)\n"
       << "  --resume             Continue from MODEL_PATH instead of "
          "initializing\n\n"
       << "Uses " << NUM_BANDS << " bands, " << CONV_NEURONS
@@ -110,7 +118,8 @@ Options parse_options(int argc, char **argv) {
     }
 #endif
     if (option != "--epochs" && option != "--learning-rate" &&
-        option != "--seed" && option != "--shift")
+        option != "--seed" && option != "--shift" && option != "--warp" &&
+        option != "--mask-time-width" && option != "--mask-frequency-width")
       throw std::runtime_error("Unknown option: " + std::string(option));
     if (++i == argc)
       throw std::runtime_error("Missing value for " + std::string(option));
@@ -121,8 +130,14 @@ Options parse_options(int argc, char **argv) {
       options.learning_rate = number<output_t>(value, option);
     else if (option == "--seed")
       options.seed = number<std::uint32_t>(value, option);
-    else
+    else if (option == "--shift")
       options.shift = number<int>(value, option);
+    else if (option == "--warp")
+      options.warp = number<int>(value, option);
+    else if (option == "--mask-time-width")
+      options.mask_time_width = number<size_t>(value, option);
+    else
+      options.mask_frequency_width = number<size_t>(value, option);
   }
   if (options.epochs == 0)
     throw std::runtime_error("Epochs must be positive");
@@ -131,6 +146,14 @@ Options parse_options(int argc, char **argv) {
   if (options.shift < 0 || options.shift >= int(NETWORK_IN_VALUES / NUM_BANDS))
     throw std::runtime_error("Shift must be between 0 and " +
                              std::to_string(NETWORK_IN_VALUES / NUM_BANDS - 1));
+  constexpr size_t rows = NETWORK_IN_VALUES / NUM_BANDS;
+  if (!options.mask_time_width || options.mask_time_width > rows ||
+      !options.mask_frequency_width || options.mask_frequency_width > NUM_BANDS)
+    throw std::runtime_error("Mask widths must fit the input and be positive");
+  if (!options.mask && (options.mask_time_width != 1 || options.mask_frequency_width != 1))
+    throw std::runtime_error("Mask widths require --mask");
+  if (options.warp < 0 || options.warp >= int(std::min(rows / 2, rows - 1 - rows / 2)))
+    throw std::runtime_error("Warp displacement is too large");
   return options;
 }
 
@@ -199,10 +222,10 @@ void train(SpeechCNN &model, const Options &options,
            const std::vector<Sample> &samples) {
   std::mt19937 random(options.seed);
   std::mt19937 mask_random(options.seed ^ 0x9e3779b9u);
+  std::mt19937 warp_random(options.seed ^ 0x85ebca6bu);
+  std::uniform_int_distribution<int> warp(-options.warp, options.warp);
   std::uniform_int_distribution<int> shift(-options.shift, options.shift);
   std::bernoulli_distribution mask_frequency(0.5);
-  std::uniform_int_distribution<size_t> band(0, NUM_BANDS - 1);
-  std::uniform_int_distribution<size_t> row(0, NETWORK_IN_VALUES / NUM_BANDS - 1);
   std::vector<size_t> order(samples.size());
   std::iota(order.begin(), order.end(), 0);
   output_t rate = options.learning_rate;
@@ -215,17 +238,25 @@ void train(SpeechCNN &model, const Options &options,
     double total_loss = 0;
     for (const size_t index_i : order) {
       const auto &sample = samples[index_i];
+      auto input = options.warp ? time_warp(sample.weights.data(), warp(warp_random))
+                                : sample.weights.data();
       if (options.mask) {
         Mask<NETWORK_IN_VALUES> mask{};
         if (mask_frequency(mask_random)) {
-          mask.mask_frequency(band(mask_random));
+          size_t width = options.mask_frequency_width == 1 ? 1 :
+              std::uniform_int_distribution<size_t>(1, options.mask_frequency_width)(mask_random);
+          size_t start = std::uniform_int_distribution<size_t>(0, NUM_BANDS - width)(mask_random);
+          for (size_t i = 0; i < width; ++i) mask.mask_frequency(start + i);
         } else {
-          mask.mask_sequence(row(mask_random));
+          size_t width = options.mask_time_width == 1 ? 1 :
+              std::uniform_int_distribution<size_t>(1, options.mask_time_width)(mask_random);
+          size_t start = std::uniform_int_distribution<size_t>(0, NETWORK_IN_VALUES / NUM_BANDS - width)(mask_random);
+          for (size_t i = 0; i < width; ++i) mask.mask_sequence(start + i);
         }
-        model.load_inputs(time_shift(sample.weights.masked_data(mask), shift(random)));
-      } else {
-        model.load_inputs(time_shift(sample.weights.data(), shift(random)));
+        for (size_t i = 0; i < input.size(); ++i)
+          if (mask.data()[i]) input[i] = 0;
       }
+      model.load_inputs(time_shift(input, shift(random)));
       model.forward_pass();
       std::array<output_t, N_LABELS> target{};
       target[sample.label] = 1;
@@ -240,8 +271,14 @@ void train(SpeechCNN &model, const Options &options,
       total_loss += loss;
     }
     const double mean_loss = total_loss / samples.size();
-    std::cout << "Epoch " << epoch << '/' << options.epochs
-              << " Mean loss: " << mean_loss << " LR: " << rate << std::endl;
+    const bool terminal = isatty(STDOUT_FILENO);
+    if (terminal || epoch % 50 == 0 || epoch == options.epochs) {
+      if (terminal) std::cout << "\r\033[K";
+      std::cout << "Epoch " << epoch << '/' << options.epochs
+                << " Mean loss: " << mean_loss << " LR: " << rate;
+      if (!terminal || epoch == options.epochs) std::cout << '\n';
+      std::cout << std::flush;
+    }
 
     // Match the ordinary trainer: halve the rate after ten stalled epochs.
     if (epoch == 1 || mean_loss < reference_loss * 0.999) {
@@ -262,8 +299,6 @@ void train(SpeechCNN &model, const Options &options,
 }
 
 void score(SpeechCNN &model, const std::vector<Sample> &samples) {
-  std::array<std::array<size_t, N_LABELS>, N_LABELS> confusion{};
-  std::array<size_t, N_LABELS> totals{};
   size_t correct = 0;
   for (const auto &sample : samples) {
     model.load_inputs(sample.weights.data());
@@ -271,51 +306,12 @@ void score(SpeechCNN &model, const std::vector<Sample> &samples) {
     const auto &output = model.output();
     const size_t predicted =
         std::max_element(output.begin(), output.end()) - output.begin();
-    ++confusion[sample.label][predicted];
-    ++totals[sample.label];
     correct += predicted == sample.label;
   }
   std::cout << "\nTotal: " << samples.size() << "\tCorrect: " << correct
             << "\nAccuracy: " << std::fixed << std::setprecision(2)
             << 100.0 * correct / samples.size() << "%\n";
 
-  std::array<size_t, N_LABELS> order{};
-  std::iota(order.begin(), order.end(), 0);
-  std::stable_sort(order.begin(), order.end(), [&](size_t left, size_t right) {
-    if (totals[left] == 0)
-      return false;
-    if (totals[right] == 0)
-      return true;
-    return double(confusion[left][left]) / totals[left] <
-           double(confusion[right][right]) / totals[right];
-  });
-  std::cout << "\nPer-label results (weakest accuracy first):\n"
-            << std::left << std::setw(21) << "Label" << std::right
-            << std::setw(8) << "Total" << std::setw(9) << "Correct"
-            << std::setw(8) << "Wrong" << std::setw(12) << "Accuracy (%)"
-            << "  " << std::left << std::setw(29)
-            << "Most common wrong prediction" << std::right << "Count\n";
-  for (const size_t label : order) {
-    size_t wrong_label = 0, wrong_count = 0;
-    for (size_t predicted = 0; predicted < N_LABELS; ++predicted)
-      if (predicted != label && confusion[label][predicted] > wrong_count) {
-        wrong_label = predicted;
-        wrong_count = confusion[label][predicted];
-      }
-    const size_t right = confusion[label][label];
-    std::cout << std::left << std::setw(21) << LABELS_MAPPINGS[label]
-              << std::right << std::setw(8) << totals[label] << std::setw(9)
-              << right << std::setw(8) << totals[label] - right
-              << std::setw(12);
-    if (totals[label] == 0)
-      std::cout << "N/A";
-    else
-      std::cout << 100.0 * right / totals[label];
-    std::cout << "  " << std::left << std::setw(29)
-              << (wrong_count ? LABELS_MAPPINGS[wrong_label]
-                              : std::string_view{"-"})
-              << std::right << wrong_count << '\n';
-  }
 }
 
 } // namespace
