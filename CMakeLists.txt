@@ -22,6 +22,10 @@ if(BUILD_TESTING)
   target_compile_options(encoding_tests PRIVATE -O3 -g)
   add_test(NAME encoding COMMAND encoding_tests)
 
+  add_executable(mask_tests tests/mask.cpp)
+  target_compile_options(mask_tests PRIVATE -UNDEBUG)
+  add_test(NAME mask COMMAND mask_tests)
+
   add_executable(network_tests tests/network.cpp)
   add_test(NAME network COMMAND network_tests)
 

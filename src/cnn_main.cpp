@@ -1,8 +1,12 @@
+#include "utils.hpp"
+#include <algorithm>
+#include <cstdlib>
 #ifdef CNN_EXPERIMENTAL
 #include "cnn_2.hpp"
 #else
 #include "cnn.hpp"
 #endif
+#include "mask.hpp"
 #include "network_utils.hpp"
 #include <charconv>
 #include <filesystem>
@@ -33,6 +37,7 @@ struct Options {
   std::uint32_t seed = 12345;
   int shift = 4;
   bool resume = false;
+  bool mask = false;
 #ifdef CNN_EXPERIMENTAL
   output_t l2 = 0;
 #endif
@@ -53,6 +58,7 @@ void usage(const char *program) {
 #ifdef CNN_EXPERIMENTAL
       << "  --l2 VALUE           L2 penalty strength (default: 0)\n"
 #endif
+      << "  --mask               Mask one random band or time row during training\n"
       << "  --resume             Continue from MODEL_PATH instead of "
          "initializing\n\n"
       << "Uses " << NUM_BANDS << " bands, " << CONV_NEURONS
@@ -86,6 +92,10 @@ Options parse_options(int argc, char **argv) {
 
   for (int i = 4; i < argc; ++i) {
     const std::string_view option = argv[i];
+    if (option == "--mask") {
+      options.mask = true;
+      continue;
+    }
     if (option == "--resume") {
       options.resume = true;
       continue;
@@ -188,7 +198,11 @@ void save_model(SpeechCNN &model, const fs::path &path) {
 void train(SpeechCNN &model, const Options &options,
            const std::vector<Sample> &samples) {
   std::mt19937 random(options.seed);
+  std::mt19937 mask_random(options.seed ^ 0x9e3779b9u);
   std::uniform_int_distribution<int> shift(-options.shift, options.shift);
+  std::bernoulli_distribution mask_frequency(0.5);
+  std::uniform_int_distribution<size_t> band(0, NUM_BANDS - 1);
+  std::uniform_int_distribution<size_t> row(0, NETWORK_IN_VALUES / NUM_BANDS - 1);
   std::vector<size_t> order(samples.size());
   std::iota(order.begin(), order.end(), 0);
   output_t rate = options.learning_rate;
@@ -199,9 +213,19 @@ void train(SpeechCNN &model, const Options &options,
     const size_t epoch = index + 1;
     std::shuffle(order.begin(), order.end(), random);
     double total_loss = 0;
-    for (const size_t index : order) {
-      const auto &sample = samples[index];
-      model.load_inputs(time_shift(sample.weights.data(), shift(random)));
+    for (const size_t index_i : order) {
+      const auto &sample = samples[index_i];
+      if (options.mask) {
+        Mask<NETWORK_IN_VALUES> mask{};
+        if (mask_frequency(mask_random)) {
+          mask.mask_frequency(band(mask_random));
+        } else {
+          mask.mask_sequence(row(mask_random));
+        }
+        model.load_inputs(time_shift(sample.weights.masked_data(mask), shift(random)));
+      } else {
+        model.load_inputs(time_shift(sample.weights.data(), shift(random)));
+      }
       model.forward_pass();
       std::array<output_t, N_LABELS> target{};
       target[sample.label] = 1;

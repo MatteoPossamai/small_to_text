@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mask.hpp"
 #include "utils.hpp"
 #include <algorithm>
 #include <array>
@@ -62,6 +63,16 @@ public:
 
   const std::array<output_t, NETWORK_IN_VALUES> &data() const {
     return input_data;
+  }
+
+  std::array<output_t, NETWORK_IN_VALUES>
+  masked_data(const Mask<NETWORK_IN_VALUES> &mask) const {
+    const auto &mask_data = mask.data();
+    std::array<output_t, NETWORK_IN_VALUES> output{};
+    for (size_t val = 0; val < input_data.size(); val++) {
+      output[val] = mask_data[val] == true ? 0 : input_data[val];
+    }
+    return output;
   }
 
   void normalize() {
