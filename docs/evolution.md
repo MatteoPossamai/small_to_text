@@ -25,7 +25,7 @@ the exact original checksum and scoring result. The selected artifact is
 
 These are exploratory single-seed comparisons, not a broad benchmark. The
 12-row extension was stopped after its completed 300-epoch score trailed the
-selected eight-row model. The 85% scoring goal has not been reached.
+selected eight-row model. The later masking and L2 experiment below reached the 85% scoring goal.
 
 ## Audio features
 
@@ -42,3 +42,18 @@ Original features performed best in this comparison. The current encoder uses
 square-root band energy with per-clip min-max scaling; it is not the provisional
 logarithm version. Keep the original features as the baseline. This comparison
 does not rule out other log or mel configurations.
+
+## Masking and L2 comparison
+
+These fresh runs used seed `12345`, 84,849 training files and the same
+9,981-recording validation set. Scoring used the original 11,005 recordings.
+
+| Training | Epochs | Validation | Scoring |
+|---|---:|---:|---:|
+| Baseline | 250 | 83.35% | 81.99% |
+| L2 (0.0001) | 250 | 84.72% | 83.24% |
+| Masking | 250 | 85.11% | 83.93% |
+| **Masking + L2 (0.0001)** | **300** | **86.18%** | **85.06%** |
+
+The combined model correctly classified 9,361 / 11,005 recordings. It is
+`network/5_cnn32_window8_mask_l2_300.txt`. These are single-seed results.

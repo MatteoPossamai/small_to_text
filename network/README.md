@@ -52,3 +52,9 @@ This will create what is required.
 ```bash
 ./build/cnn8 score weights/scoring network/4_cnn32_window8_20band_500.txt
 ```
+
+### 5. CNN, masking + L2, 300 epochs - 85.06%
+
+```bash
+./build/cnn2 score weights/scoring network/5_cnn32_window8_mask_l2_300.txt
+```
