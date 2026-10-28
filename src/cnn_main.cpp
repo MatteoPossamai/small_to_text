@@ -1,4 +1,8 @@
+#ifdef CNN_EXPERIMENTAL
+#include "cnn_2.hpp"
+#else
 #include "cnn.hpp"
+#endif
 #include "network_utils.hpp"
 #include <charconv>
 #include <filesystem>
@@ -29,6 +33,9 @@ struct Options {
   std::uint32_t seed = 12345;
   int shift = 4;
   bool resume = false;
+#ifdef CNN_EXPERIMENTAL
+  output_t l2 = 0;
+#endif
 };
 
 void usage(const char *program) {
@@ -43,6 +50,9 @@ void usage(const char *program) {
          "12345)\n"
       << "  --shift N            Maximum shift in time rows (default: 4; 0 "
          "disables)\n"
+#ifdef CNN_EXPERIMENTAL
+      << "  --l2 VALUE           L2 penalty strength (default: 0)\n"
+#endif
       << "  --resume             Continue from MODEL_PATH instead of "
          "initializing\n\n"
       << "Uses " << NUM_BANDS << " bands, " << CONV_NEURONS
@@ -80,6 +90,15 @@ Options parse_options(int argc, char **argv) {
       options.resume = true;
       continue;
     }
+#ifdef CNN_EXPERIMENTAL
+    if (option == "--l2") {
+      if (++i == argc) throw std::runtime_error("Missing value for --l2");
+      options.l2 = number<output_t>(argv[i], option);
+      if (!std::isfinite(options.l2) || options.l2 < 0)
+        throw std::runtime_error("L2 strength must be finite and non-negative");
+      continue;
+    }
+#endif
     if (option != "--epochs" && option != "--learning-rate" &&
         option != "--seed" && option != "--shift")
       throw std::runtime_error("Unknown option: " + std::string(option));
@@ -186,7 +205,11 @@ void train(SpeechCNN &model, const Options &options,
       model.forward_pass();
       std::array<output_t, N_LABELS> target{};
       target[sample.label] = 1;
+#ifdef CNN_EXPERIMENTAL
+      const auto loss = model.backprop(target, rate, options.l2);
+#else
       const auto loss = model.backprop(target, rate);
+#endif
       if (!std::isfinite(loss))
         throw std::runtime_error(
             "Training diverged; try a lower --learning-rate");
@@ -296,6 +319,9 @@ int main(int argc, char **argv) {
               << " bands)." << std::endl;
     if (options.command == "train") {
       std::cout << "Seed: " << options.seed << std::endl;
+#ifdef CNN_EXPERIMENTAL
+      std::cout << "L2 strength: " << options.l2 << std::endl;
+#endif
       train(model, options, samples);
     } else {
       score(model, samples);

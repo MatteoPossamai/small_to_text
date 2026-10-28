@@ -59,6 +59,11 @@ add_cnn_variant(cnn8 32 8 4_cnn32_window8_20band_500.txt)
 # Preserve the existing command names as the default eight-row build.
 add_cnn_variant(cnn 32 8 4_cnn32_window8_20band_500.txt)
 
+# Experimental trainer uses the separate CNN implementation.
+add_executable(cnn2 src/cnn_main.cpp)
+target_compile_definitions(cnn2 PRIVATE CNN_EXPERIMENTAL CNN_NEURONS=32 CNN_WINDOW=8)
+target_compile_options(cnn2 PRIVATE -O3 -g)
+
 # -----------------
 # Compile audio target
 # -----------------
