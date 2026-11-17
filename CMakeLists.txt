@@ -112,3 +112,9 @@ target_compile_options(inference PRIVATE
     -O3 -ffast-math -g
 )
 
+add_executable(lstm_main src/seq_2_seq/lstm_main.cpp)
+target_compile_options(lstm_main PRIVATE
+    -O3 -ffast-math -g
+    -Rpass-missed=loop-vectorize
+    -save-temps=obj
+)

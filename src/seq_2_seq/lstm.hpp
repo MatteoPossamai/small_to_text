@@ -24,24 +24,24 @@ class LSTM {
   mem_t s_t_mem{}; // Short term memory, or h
 
   // Weights
-  weight_t W_f; // forget
-  weight_t W_i; // input
-  weight_t W_c; // candidate
-  weight_t W_o; // output
-  //
-  // Biases
-  T B_f; // forget
-  T B_i; // input
-  T B_c; // candidate
-  T B_o; // output
+  weight_t W_f{}; // forget
+  weight_t W_i{}; // input
+  weight_t W_c{}; // candidate
+  weight_t W_o{}; // output
 
-  __attribute__((always_inline)) inline T fast_sigmoid(T x) {
-    return x / (1 + std::abs(x));
+  // Biases
+  out_t B_f{}; // forget
+  out_t B_i{}; // input
+  out_t B_c{}; // candidate
+  out_t B_o{}; // output
+
+  __attribute__((always_inline)) inline T sigmoid(T x) {
+    return T{1} / (T{1} + std::exp(-x));
   }
 
   void sigmoid_inplace(out_t &array) {
     for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
-      array[i] = fast_sigmoid(array[i]);
+      array[i] = sigmoid(array[i]);
     }
   }
 
@@ -52,21 +52,21 @@ class LSTM {
   }
 
   out_t matrix_mul_scalar(const weight_t &m1, const concat_t &m2,
-                          const T bias) {
+                          const out_t &bias) {
     out_t res{};
 
+    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
 #pragma clang loop vectorize(enable)
 #pragma clang loop interleave(enable)
-    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
       for (size_t j = 0; j < OUTPUT_SIZE + INPUT_SIZE; ++j) {
-        res[j] += m2[i] * m1[i][j];
+        res[i] += m2[j] * m1[i][j];
       }
     }
 
 #pragma clang loop vectorize(enable)
 #pragma clang loop interleave(enable)
     for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
-      res[i] += bias;
+      res[i] += bias[i];
     }
 
     return res;
@@ -86,7 +86,7 @@ class LSTM {
   out_t forward_scalar(const in_t &x) {
     concat_t z_t;
     std::copy(x.begin(), x.end(), z_t.begin());
-    std::copy(l_t_mem.begin(), l_t_mem.end(), z_t.begin() + x.size());
+    std::copy(s_t_mem.begin(), s_t_mem.end(), z_t.begin() + x.size());
 
     // Forget gate
     out_t forget_gate = matrix_mul_scalar(W_f, z_t, B_f);
@@ -105,23 +105,24 @@ class LSTM {
     out_t output_gate = matrix_mul_scalar(W_o, z_t, B_o);
     sigmoid_inplace(output_gate);
 
-    mem_t copy_l_t_mem{};
-    std::copy(l_t_mem.cbegin(), l_t_mem.cend(), copy_l_t_mem.begin());
-    tanh_inplace(copy_l_t_mem);
-
     for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
-      s_t_mem[i] = copy_l_t_mem[i] * output_gate[i];
+      s_t_mem[i] = std::tanh(l_t_mem[i]) * output_gate[i];
     }
     return s_t_mem;
   }
 
 public:
   LSTM() = default;
-  LSTM(weight_t &W_f_in, weight_t &W_i_in, weight_t &W_c_in, weight_t &W_o_in) {
+  LSTM(weight_t &W_f_in, weight_t &W_i_in, weight_t &W_c_in, weight_t &W_o_in,
+       out_t &B_f_in, out_t &B_i_in, out_t &B_c_in, out_t &B_o_in) {
     W_f = W_f_in;
     W_i = W_i_in;
     W_c = W_c_in;
     W_o = W_o_in;
+    B_f = B_f_in;
+    B_i = B_i_in;
+    B_c = B_c_in;
+    B_o = B_o_in;
   }
 
   LSTM(const LSTM &src) = default;
