@@ -1,4 +1,4 @@
-#include "../src/network_utils.hpp"
+#include "../src/classificator/network_utils.hpp"
 #include <chrono>
 #include <filesystem>
 #include <iostream>

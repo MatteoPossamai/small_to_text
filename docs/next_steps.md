@@ -52,8 +52,8 @@ representative validation mistakes. If neither change helps validation, move on.
 
 ## 2. Make three seconds useful
 
-The current [WAV reader](../src/wav_file.hpp) stops after one second, and
-[inference](../src/inference_cnn.cpp) returns one label.
+The current [WAV reader](../src/classificator/wav_file.hpp) stops after one second, and
+[inference](../src/classificator/inference_cnn.cpp) returns one label.
 Increasing the input length alone still gives one label.
 
 Start with **two or three known words, spoken with pauses**:

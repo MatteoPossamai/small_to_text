@@ -2,7 +2,8 @@
 
 ## Build
 
-To build the repo you can use:
+The classifier sources are in `src/classificator/`. Run all commands below from
+the repository root. To build the repo:
 
 ```shell
 cmake -S . -B build

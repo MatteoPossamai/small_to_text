@@ -46,11 +46,11 @@ endif()
 
 # Build the same source for each saved model shape. No neural-network code changes.
 function(add_cnn_variant name neurons window model)
-  add_executable(${name} src/cnn_main.cpp)
+  add_executable(${name} src/classificator/cnn_main.cpp)
   target_compile_definitions(${name} PRIVATE CNN_NEURONS=${neurons} CNN_WINDOW=${window})
   target_compile_options(${name} PRIVATE -O3 -g)
 
-  add_executable(inference_${name} src/inference_cnn.cpp)
+  add_executable(inference_${name} src/classificator/inference_cnn.cpp)
   target_compile_definitions(inference_${name} PRIVATE
       CNN_NEURONS=${neurons} CNN_WINDOW=${window}
       CNN_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/${model}")
@@ -64,14 +64,14 @@ add_cnn_variant(cnn8 32 8 4_cnn32_window8_20band_500.txt)
 add_cnn_variant(cnn 32 8 4_cnn32_window8_20band_500.txt)
 
 # Experimental trainer uses the separate CNN implementation.
-add_executable(cnn2 src/cnn_main.cpp)
+add_executable(cnn2 src/classificator/cnn_main.cpp)
 target_compile_definitions(cnn2 PRIVATE CNN_EXPERIMENTAL CNN_NEURONS=32 CNN_WINDOW=8)
 target_compile_options(cnn2 PRIVATE -O3 -g)
 
 # -----------------
 # Compile audio target
 # -----------------
-add_executable(compile_audios src/compile_audio_to_weights.cpp)
+add_executable(compile_audios src/classificator/compile_audio_to_weights.cpp)
 target_compile_definitions(compile_audios PRIVATE
     DATASET_METADATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
 )
@@ -82,7 +82,7 @@ target_compile_options(compile_audios PRIVATE
 # -----------------
 # Train target
 # -----------------
-add_executable(train src/train.cpp)
+add_executable(train src/classificator/train.cpp)
 target_compile_definitions(train PRIVATE
     NETWORK_MODEL_PATH="${NETWORK_MODEL_PATH}"
 )
@@ -93,7 +93,7 @@ target_compile_options(train PRIVATE
 # -----------------
 # Scoring target
 # -----------------
-add_executable(scoring src/scoring.cpp)
+add_executable(scoring src/classificator/scoring.cpp)
 target_compile_definitions(scoring PRIVATE
     NETWORK_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/1_mlp_timeshift_20band_300.txt"
 )
@@ -104,7 +104,7 @@ target_compile_options(scoring PRIVATE
 # -----------------
 # Inference target
 # -----------------
-add_executable(inference src/inference.cpp)
+add_executable(inference src/classificator/inference.cpp)
 target_compile_definitions(inference PRIVATE
     NETWORK_MODEL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/network/1_mlp_timeshift_20band_300.txt"
 )

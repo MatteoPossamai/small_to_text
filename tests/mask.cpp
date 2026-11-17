@@ -1,5 +1,5 @@
-#include "../src/wav_weights.hpp"
-#include "../src/time_warp.hpp"
+#include "../src/classificator/wav_weights.hpp"
+#include "../src/classificator/time_warp.hpp"
 #include <cassert>
 #include <stdexcept>
 

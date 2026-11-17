@@ -1,4 +1,4 @@
-#include "../src/cnn.hpp"
+#include "../src/classificator/cnn.hpp"
 #include <chrono>
 #include <filesystem>
 #include <iostream>

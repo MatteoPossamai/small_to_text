@@ -1,6 +1,6 @@
 // Exercise the same encoding entry point as the command-line program.
 #define main compile_audio_main
-#include "../src/compile_audio_to_weights.cpp"
+#include "../src/classificator/compile_audio_to_weights.cpp"
 #undef main
 
 #include <filesystem>

@@ -20,7 +20,8 @@ The complete filename index and matching commands are in
 [network/README.md](../network/README.md). `cnn8` is the selected eight-row build;
 `cnn` keeps the same eight-row defaults for existing commands.
 
-Build the executable:
+The classifier sources are in `src/classificator/`. Run these commands from the
+repository root to build the executable:
 
 ```bash
 cmake -S . -B build
