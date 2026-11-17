@@ -1,7 +1,10 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
+#include <random>
 
 enum class Platform { X86_64, VULKAN_GPU, ANY };
 
@@ -112,7 +115,28 @@ class LSTM {
   }
 
 public:
-  LSTM() = default;
+  LSTM() : LSTM(std::random_device{}()) {}
+
+  // A fixed seed makes initialization repeatable. Biases and memories start at 0.
+  explicit LSTM(std::uint32_t seed) {
+    std::mt19937 generator(seed);
+    // Xavier uniform: fan-in = INPUT_SIZE + OUTPUT_SIZE, fan-out = OUTPUT_SIZE.
+    const T limit = std::sqrt(T{6} / (T(INPUT_SIZE) + T{2} * T(OUTPUT_SIZE)));
+    std::uniform_real_distribution<T> distribution(-limit, limit);
+    for (weight_t *weights : {&W_f, &W_i, &W_c, &W_o}) {
+      for (auto &row : *weights) {
+        for (auto &weight : row)
+          weight = distribution(generator);
+      }
+    }
+  }
+
+  // Clear sequence memory while keeping the same weights and biases.
+  void reset_state() {
+    l_t_mem.fill(T{0});
+    s_t_mem.fill(T{0});
+  }
+
   LSTM(weight_t &W_f_in, weight_t &W_i_in, weight_t &W_c_in, weight_t &W_o_in,
        out_t &B_f_in, out_t &B_i_in, out_t &B_c_in, out_t &B_o_in) {
     W_f = W_f_in;

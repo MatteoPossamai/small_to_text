@@ -29,6 +29,9 @@ if(BUILD_TESTING)
   add_executable(network_tests tests/network.cpp)
   add_test(NAME network COMMAND network_tests)
 
+  add_executable(lstm_tests tests/lstm.cpp)
+  add_test(NAME lstm COMMAND lstm_tests)
+
   add_executable(cnn_tests tests/cnn.cpp)
   add_test(NAME cnn COMMAND cnn_tests)
   add_test(NAME cnn_cli COMMAND ${CMAKE_COMMAND}
@@ -113,6 +116,7 @@ target_compile_options(inference PRIVATE
 )
 
 add_executable(lstm_main src/seq_2_seq/lstm_main.cpp)
+add_executable(lstm_train src/seq_2_seq/lstm_train.cpp)
 target_compile_options(lstm_main PRIVATE
     -O3 -ffast-math -g
     -Rpass-missed=loop-vectorize
