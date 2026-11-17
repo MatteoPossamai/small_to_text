@@ -121,4 +121,5 @@ target_compile_options(lstm_main PRIVATE
     -O3 -ffast-math -g
     -Rpass-missed=loop-vectorize
     -save-temps=obj
+    -march=native
 )
