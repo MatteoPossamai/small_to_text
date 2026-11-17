@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <random>
+#include <vector>
 
 enum class Platform { X86_64, VULKAN_GPU, ANY };
 
@@ -15,6 +16,7 @@ class LSTM {
   static_assert(INPUT_SIZE > 0);
   static_assert(OUTPUT_SIZE % 8 == 0 && OUTPUT_SIZE > 0);
 
+public:
   using mem_t = std::array<T, OUTPUT_SIZE>;
   using in_t = std::array<T, INPUT_SIZE>;
   using out_t = std::array<T, OUTPUT_SIZE>;
@@ -22,6 +24,18 @@ class LSTM {
       std::array<std::array<T, OUTPUT_SIZE + INPUT_SIZE>, OUTPUT_SIZE>;
   using concat_t = std::array<T, OUTPUT_SIZE + INPUT_SIZE>;
 
+  struct StepCache {
+    in_t input;
+    out_t prev_l_t_mem;
+    out_t prev_s_t_mem;
+    out_t forget_gate;
+    out_t input_gate;
+    out_t candidate_gate;
+    out_t output_gate;
+    out_t new_cell;
+  };
+
+private:
   // Memory
   mem_t l_t_mem{}; // Long term memory, or c
   mem_t s_t_mem{}; // Short term memory, or h
@@ -37,6 +51,9 @@ class LSTM {
   out_t B_i{}; // input
   out_t B_c{}; // candidate
   out_t B_o{}; // output
+
+  // Training cache
+  std::vector<StepCache> cache;
 
   __attribute__((always_inline)) inline T sigmoid(T x) {
     return T{1} / (T{1} + std::exp(-x));
@@ -86,6 +103,46 @@ class LSTM {
     }
   }
 
+  out_t forward_scalar_train(const in_t &x) {
+    StepCache cache_i{};
+    cache_i.input = x;
+    cache_i.prev_l_t_mem = l_t_mem;
+    cache_i.prev_s_t_mem = s_t_mem;
+
+    concat_t z_t;
+    std::copy(x.begin(), x.end(), z_t.begin());
+    std::copy(s_t_mem.begin(), s_t_mem.end(), z_t.begin() + x.size());
+
+    // Forget gate
+    out_t forget_gate = matrix_mul_scalar(W_f, z_t, B_f);
+    sigmoid_inplace(forget_gate);
+    cache_i.forget_gate = forget_gate;
+
+    // Input gate
+    out_t input_gate = matrix_mul_scalar(W_i, z_t, B_i);
+    sigmoid_inplace(input_gate);
+    cache_i.input_gate = input_gate;
+    out_t candidate_gate = matrix_mul_scalar(W_c, z_t, B_c);
+    tanh_inplace(candidate_gate);
+    cache_i.candidate_gate = candidate_gate;
+
+    // Update Long Term Memory
+    set_l_t_mem_scalar(l_t_mem, forget_gate, input_gate, candidate_gate);
+    cache_i.new_cell = l_t_mem;
+
+    // Output Gate
+    out_t output_gate = matrix_mul_scalar(W_o, z_t, B_o);
+    sigmoid_inplace(output_gate);
+    cache_i.output_gate = output_gate;
+
+    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
+      s_t_mem[i] = std::tanh(l_t_mem[i]) * output_gate[i];
+    }
+
+    cache.push_back(cache_i);
+    return s_t_mem;
+  }
+
   out_t forward_scalar(const in_t &x) {
     concat_t z_t;
     std::copy(x.begin(), x.end(), z_t.begin());
@@ -117,7 +174,8 @@ class LSTM {
 public:
   LSTM() : LSTM(std::random_device{}()) {}
 
-  // A fixed seed makes initialization repeatable. Biases and memories start at 0.
+  // A fixed seed makes initialization repeatable. Biases and memories start at
+  // 0.
   explicit LSTM(std::uint32_t seed) {
     std::mt19937 generator(seed);
     // Xavier uniform: fan-in = INPUT_SIZE + OUTPUT_SIZE, fan-out = OUTPUT_SIZE.
@@ -153,6 +211,24 @@ public:
   LSTM(LSTM &&src) = default;
   LSTM &operator=(const LSTM &rhs) = default;
   LSTM &operator=(LSTM &&rhs) = default;
+
+  template <typename Dataset>
+  void train(size_t epochs, [[maybe_unused]] T learning_rate,
+             const Dataset &dataset) {
+    for (size_t epoch = 0; epoch < epochs; ++epoch) {
+      for (const auto &sample : dataset) {
+        reset_state();
+        cache.clear();
+        cache.reserve(sample.frames.size());
+
+        for (const auto &frame : sample.frames)
+          forward_scalar_train(frame);
+
+        // TODO: Predict, calculate loss against sample.target, run backward,
+        // and update weights using learning_rate.
+      }
+    }
+  }
 
   out_t forward_pass(const in_t &x) {
     // if constexpr (platform == Platform::X86_64) {
