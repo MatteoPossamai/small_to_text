@@ -45,7 +45,7 @@ void check_supplied_parameters() {
   std::array<double, 8> zero{}, candidate_bias{};
   candidate_bias.fill(1.0);
   LSTM<double, 2, 8, Platform::ANY> model(weights, weights, weights, weights,
-                                          zero, zero, candidate_bias, zero);
+                                      zero, zero, candidate_bias, zero);
   const double expected = 0.5 * std::tanh(0.5 * std::tanh(1.0));
   for (const double value : model.forward_pass({0.0, 0.0})) {
     if (std::abs(value - expected) > 1e-12)
@@ -54,8 +54,13 @@ void check_supplied_parameters() {
 }
 
 using GradientModel = LSTM<double, 2, 8, Platform::ANY>;
-using Parameters = GradientModel::Gradients;
 using Sequence = std::array<GradientModel::in_t, 3>;
+
+// Test-owned parameters: the LSTM keeps its parameters and gradients private.
+struct Parameters {
+  GradientModel::weight_t W_f{}, W_i{}, W_c{}, W_o{};
+  GradientModel::out_t B_f{}, B_i{}, B_c{}, B_o{};
+};
 
 GradientModel make_model(Parameters &parameters) {
   return GradientModel(parameters.W_f, parameters.W_i, parameters.W_c,
@@ -63,9 +68,8 @@ GradientModel make_model(Parameters &parameters) {
                        parameters.B_c, parameters.B_o);
 }
 
-// Include a loss at every time step and on the final cell memory. This
-// exercises both recurrent gradient paths, rather than checking one isolated
-// LSTM step.
+// A loss at every step checks that shared weight gradients accumulate across
+// time, and that later errors flow through both hidden and cell memory.
 double hidden_coefficient(size_t step, size_t neuron) {
   return double(step + 1) * (neuron % 2 == 0 ? 0.1 : -0.07);
 }
@@ -73,14 +77,11 @@ double hidden_coefficient(size_t step, size_t neuron) {
 double objective(GradientModel &model, const Sequence &sequence) {
   model.reset_state();
   double result = 0.0;
-  GradientModel::StepCache cache{};
   for (size_t step = 0; step < sequence.size(); ++step) {
-    const auto hidden = model.forward_pass(sequence[step], cache);
+    const auto hidden = model.forward_pass(sequence[step]);
     for (size_t neuron = 0; neuron < hidden.size(); ++neuron)
       result += hidden_coefficient(step, neuron) * hidden[neuron];
   }
-  for (size_t neuron = 0; neuron < cache.cell.size(); ++neuron)
-    result += 0.03 * double(neuron + 1) * cache.cell[neuron];
   return result;
 }
 
@@ -89,25 +90,20 @@ double objective(Parameters &parameters, const Sequence &sequence) {
   return objective(model, sequence);
 }
 
-Sequence backward(GradientModel &model, const Sequence &sequence,
-                  Parameters &gradients) {
+Sequence backward(GradientModel &model, const Sequence &sequence) {
   model.reset_state();
-  std::array<GradientModel::StepCache, 3> caches{};
-  for (size_t step = 0; step < sequence.size(); ++step)
-    model.forward_pass(sequence[step], caches[step]);
+  for (const auto &input : sequence)
+    model.forward_pass_train(input);
 
   GradientModel::out_t d_hidden{}, d_cell{};
-  for (size_t neuron = 0; neuron < d_cell.size(); ++neuron)
-    d_cell[neuron] = 0.03 * double(neuron + 1);
   Sequence d_inputs{};
   for (size_t step = sequence.size(); step-- > 0;) {
     for (size_t neuron = 0; neuron < d_hidden.size(); ++neuron)
       d_hidden[neuron] += hidden_coefficient(step, neuron);
-    const auto result =
-        model.backward_pass(caches[step], d_hidden, d_cell, gradients);
-    d_inputs[step] = result.input;
-    d_hidden = result.previous_hidden;
-    d_cell = result.previous_cell;
+    const auto result = model.backward_pass(d_hidden, d_cell);
+    d_inputs[step] = result.input_gradient;
+    d_hidden = result.previous_hidden_gradient;
+    d_cell = result.previous_cell_gradient;
   }
   return d_inputs;
 }
@@ -119,6 +115,39 @@ void check_close(double actual, double expected, const std::string &name) {
       std::abs(actual - expected) > tolerance)
     throw std::runtime_error(name + ": actual " + std::to_string(actual) +
                              ", expected " + std::to_string(expected));
+}
+
+void check_forward_modes() {
+  GradientModel inference(12345), training(12345);
+  const Sequence sequence{{{{0.4, -0.3}}, {{-0.2, 0.7}}, {{0.6, 0.1}}}};
+  for (const auto &input : sequence) {
+    const auto expected = inference.forward_pass(input);
+    const auto actual = training.forward_pass_train(input);
+    for (size_t neuron = 0; neuron < actual.size(); ++neuron)
+      check_close(actual[neuron], expected[neuron], "Training forward output");
+  }
+}
+
+// Compare actual updates against a separately constructed model whose parameters
+// were updated using numerical gradients. Probe different input histories so
+// agreement is checked on more than a single scalar loss.
+void check_model_outputs(GradientModel &actual, Parameters &parameters) {
+  const std::array<Sequence, 3> probes{{
+      {{{{0.4, -0.3}}, {{-0.2, 0.7}}, {{0.6, 0.1}}}},
+      {{{{-0.5, 0.2}}, {{0.8, -0.6}}, {{-0.1, 0.9}}}},
+      {{{{0.0, 0.0}}, {{0.0, 0.0}}, {{0.0, 0.0}}}},
+  }};
+  for (const auto &sequence : probes) {
+    auto expected = make_model(parameters);
+    actual.reset_state();
+    for (const auto &input : sequence) {
+      const auto actual_output = actual.forward_pass(input);
+      const auto expected_output = expected.forward_pass(input);
+      for (size_t neuron = 0; neuron < actual_output.size(); ++neuron)
+        check_close(actual_output[neuron], expected_output[neuron],
+                    "Model output after parameter update");
+    }
+  }
 }
 
 void check_gradients() {
@@ -138,23 +167,21 @@ void check_gradients() {
   }
   Sequence sequence{{{{0.4, -0.3}}, {{-0.2, 0.7}}, {{0.6, 0.1}}}};
   auto model = make_model(parameters);
-  Parameters gradients{};
-  const auto d_inputs = backward(model, sequence, gradients);
+  const auto d_inputs = backward(model, sequence);
   constexpr double epsilon = 1e-6;
 
-  // Compare every matrix weight and bias against a central finite difference.
-  // Reconstruct the model for each perturbation so its memory always starts at
-  // 0.
-  auto check_parameter = [&](double &parameter, double derivative) {
-    const double original = parameter;
-    parameter = original + epsilon;
+  auto numerical_gradient = [&](double &value) {
+    const double original = value;
+    value = original + epsilon;
     const double plus = objective(parameters, sequence);
-    parameter = original - epsilon;
+    value = original - epsilon;
     const double minus = objective(parameters, sequence);
-    parameter = original;
-    check_close(derivative, (plus - minus) / (2.0 * epsilon),
-                "Parameter gradient");
+    value = original;
+    return (plus - minus) / (2.0 * epsilon);
   };
+
+  // Calculate independent numerical gradients for every weight and bias.
+  Parameters gradients{};
   const std::array weight_members{&Parameters::W_f, &Parameters::W_i,
                                   &Parameters::W_c, &Parameters::W_o};
   const std::array bias_members{&Parameters::B_f, &Parameters::B_i,
@@ -162,62 +189,51 @@ void check_gradients() {
   for (const auto member : weight_members) {
     for (size_t row = 0; row < (parameters.*member).size(); ++row) {
       for (size_t col = 0; col < (parameters.*member)[row].size(); ++col)
-        check_parameter((parameters.*member)[row][col],
-                        (gradients.*member)[row][col]);
+        (gradients.*member)[row][col] =
+            numerical_gradient((parameters.*member)[row][col]);
     }
   }
   for (const auto member : bias_members) {
     for (size_t row = 0; row < (parameters.*member).size(); ++row)
-      check_parameter((parameters.*member)[row], (gradients.*member)[row]);
+      (gradients.*member)[row] = numerical_gradient((parameters.*member)[row]);
   }
 
   for (size_t step = 0; step < sequence.size(); ++step) {
-    for (size_t feature = 0; feature < sequence[step].size(); ++feature) {
-      const double original = sequence[step][feature];
-      sequence[step][feature] = original + epsilon;
-      const double plus = objective(parameters, sequence);
-      sequence[step][feature] = original - epsilon;
-      const double minus = objective(parameters, sequence);
-      sequence[step][feature] = original;
-      check_close(d_inputs[step][feature], (plus - minus) / (2.0 * epsilon),
-                  "Input gradient");
-    }
+    for (size_t feature = 0; feature < sequence[step].size(); ++feature)
+      check_close(d_inputs[step][feature],
+                  numerical_gradient(sequence[step][feature]), "Input gradient");
   }
 
-  Parameters accumulated = gradients;
-  backward(model, sequence, accumulated);
-  for (const auto member : weight_members) {
-    for (size_t row = 0; row < (gradients.*member).size(); ++row) {
-      for (size_t col = 0; col < (gradients.*member)[row].size(); ++col)
-        check_close((accumulated.*member)[row][col],
-                    2.0 * (gradients.*member)[row][col], "Accumulated weight");
-    }
-  }
-  for (const auto member : bias_members) {
-    for (size_t row = 0; row < (gradients.*member).size(); ++row)
-      check_close((accumulated.*member)[row], 2.0 * (gradients.*member)[row],
-                  "Accumulated bias");
-  }
+  // Backward accumulates gradients but must not change any parameters yet.
+  auto before_update = model;
+  check_model_outputs(before_update, parameters);
 
-  const double before = objective(model, sequence);
-  constexpr double learning_rate = 0.01;
-  model.apply_gradients(gradients, learning_rate);
+  const double before = objective(parameters, sequence);
+  constexpr double learning_rate = 0.1;
+  model.apply_gradient(learning_rate);
+  auto expected_parameters = parameters;
   for (const auto member : weight_members) {
     for (size_t row = 0; row < (parameters.*member).size(); ++row) {
       for (size_t col = 0; col < (parameters.*member)[row].size(); ++col)
-        (parameters.*member)[row][col] -=
+        (expected_parameters.*member)[row][col] -=
             learning_rate * (gradients.*member)[row][col];
     }
   }
   for (const auto member : bias_members) {
     for (size_t row = 0; row < (parameters.*member).size(); ++row)
-      (parameters.*member)[row] -= learning_rate * (gradients.*member)[row];
+      (expected_parameters.*member)[row] -=
+          learning_rate * (gradients.*member)[row];
   }
-  const double after = objective(model, sequence);
-  check_close(after, objective(parameters, sequence),
-              "Gradient descent update");
-  if (!(after < before))
+  check_model_outputs(model, expected_parameters);
+  if (!(objective(model, sequence) < before))
     throw std::runtime_error("Gradient descent did not reduce the objective");
+
+  // reset_state clears pending gradients as well as recurrent state and history.
+  auto reset_model = make_model(parameters);
+  backward(reset_model, sequence);
+  reset_model.reset_state();
+  reset_model.apply_gradient(learning_rate);
+  check_model_outputs(reset_model, parameters);
 }
 
 } // namespace
@@ -227,6 +243,7 @@ int main() {
     check_initialization_and_reset<float>();
     check_initialization_and_reset<double>();
     check_supplied_parameters();
+    check_forward_modes();
     check_gradients();
     std::cout << "LSTM initialization, reset, and gradient tests passed\n";
   } catch (const std::exception &error) {
