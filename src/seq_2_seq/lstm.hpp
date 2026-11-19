@@ -35,6 +35,12 @@ public:
     out_t new_cell;
   };
 
+  struct BackwardResult {
+    in_t input_gradient;
+    out_t previous_hidden_gradient;
+    out_t previous_cell_gradient;
+  };
+
 private:
   // Memory
   mem_t l_t_mem{}; // Long term memory, or c
@@ -193,6 +199,19 @@ public:
   void reset_state() {
     l_t_mem.fill(T{0});
     s_t_mem.fill(T{0});
+    cache.clear();
+
+    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
+      W_f_grad[i].fill(0);
+      W_i_grad[i].fill(0);
+      W_c_grad[i].fill(0);
+      W_o_grad[i].fill(0);
+    }
+
+    B_f_grad.fill(0);
+    B_i_grad.fill(0);
+    B_c_grad.fill(0);
+    B_o_grad.fill(0);
   }
 
   LSTM(weight_t &W_f_in, weight_t &W_i_in, weight_t &W_c_in, weight_t &W_o_in,
@@ -212,24 +231,6 @@ public:
   LSTM &operator=(const LSTM &rhs) = default;
   LSTM &operator=(LSTM &&rhs) = default;
 
-  template <typename Dataset>
-  void train(size_t epochs, [[maybe_unused]] T learning_rate,
-             const Dataset &dataset) {
-    for (size_t epoch = 0; epoch < epochs; ++epoch) {
-      for (const auto &sample : dataset) {
-        reset_state();
-        cache.clear();
-        cache.reserve(sample.frames.size());
-
-        for (const auto &frame : sample.frames)
-          forward_scalar_train(frame);
-
-        // TODO: Predict, calculate loss against sample.target, run backward,
-        // and update weights using learning_rate.
-      }
-    }
-  }
-
   out_t forward_pass(const in_t &x) {
     // if constexpr (platform == Platform::X86_64) {
     //   return forward_x86(x); // TODO: implement
@@ -237,4 +238,139 @@ public:
     return forward_scalar(x);
     // }
   }
+
+  // Training API
+  // TODO: can be wrapped at compile time to avoid memory loss at inference?
+
+  out_t forward_pass_train(const in_t &x) {
+    // TODO: x86 one
+    return forward_scalar_train(x);
+  }
+
+  BackwardResult backward_pass(const out_t &hidden_gradient,
+                               const out_t &cell_gradient) {
+    // Consume one saved forward step, starting with the most recent one.
+    const StepCache &last_cached = cache.back();
+    const auto &forget = last_cached.forget_gate;
+    const auto &input = last_cached.input_gate;
+    const auto &cand = last_cached.candidate_gate;
+    const auto &output = last_cached.output_gate;
+
+    auto tanh_cell = last_cached.new_cell;
+    tanh_inplace(tanh_cell);
+
+    BackwardResult result{};
+    out_t forget_score_gradient{}, input_score_gradient{};
+    out_t candidate_score_gradient{}, output_score_gradient{};
+
+#pragma clang loop vectorize(enable)
+#pragma clang loop interleave(enable)
+    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
+      // Forward: hidden = output * tanh(cell).
+      // Derivative through tanh: d_cell = d_hidden * output * (1 -
+      // tanh(cell)^2). Add the cell gradient arriving directly from the
+      // following time step.
+      const T total_cell_gradient =
+          cell_gradient[i] +
+          hidden_gradient[i] * output[i] * (T{1} - tanh_cell[i] * tanh_cell[i]);
+
+      // Forward: cell = forget * previous_cell + input * candidate.
+      // Derivative with respect to previous_cell: d_previous_cell = d_cell *
+      // forget.
+      result.previous_cell_gradient[i] = total_cell_gradient * forget[i];
+
+      // Forward: forget = sigmoid(forget_score).
+      // d_forget = d_cell * previous_cell; sigmoid'(score) = forget * (1 -
+      // forget).
+      forget_score_gradient[i] = total_cell_gradient *
+                                 last_cached.prev_l_t_mem[i] * forget[i] *
+                                 (T{1} - forget[i]);
+
+      // Forward: input = sigmoid(input_score).
+      // d_input = d_cell * candidate; sigmoid'(score) = input * (1 - input).
+      input_score_gradient[i] =
+          total_cell_gradient * cand[i] * input[i] * (T{1} - input[i]);
+
+      // Forward: candidate = tanh(candidate_score).
+      // d_candidate = d_cell * input; tanh'(score) = 1 - candidate^2.
+      candidate_score_gradient[i] =
+          total_cell_gradient * input[i] * (T{1} - cand[i] * cand[i]);
+
+      // Forward: hidden = output * tanh(cell); output = sigmoid(output_score).
+      // d_output = d_hidden * tanh(cell); sigmoid'(score) = output * (1 -
+      // output).
+      output_score_gradient[i] =
+          hidden_gradient[i] * tanh_cell[i] * output[i] * (T{1} - output[i]);
+    }
+
+    concat_t combined_input{};
+    std::copy(last_cached.input.begin(), last_cached.input.end(),
+              combined_input.begin());
+    std::copy(last_cached.prev_s_t_mem.begin(), last_cached.prev_s_t_mem.end(),
+              combined_input.begin() + INPUT_SIZE);
+    concat_t combined_input_gradient{};
+
+    // Forward, for each gate: score[row] = sum(W[row][col] * z[col]) +
+    // bias[row]. Derivatives: d_W[row][col] = d_score[row] * z[col];
+    // d_bias[row] = d_score[row]. Also d_z[col] = sum(W[row][col] *
+    // d_score[row]), summed over all four gates.
+    const auto accumulate_gate =
+        [&](const weight_t &weights, weight_t &weight_gradients,
+            out_t &bias_gradients, const out_t &score_gradient) {
+          for (size_t row = 0; row < OUTPUT_SIZE; ++row) {
+            const T gradient = score_gradient[row];
+            bias_gradients[row] += gradient;
+#pragma clang loop vectorize(enable)
+#pragma clang loop interleave(enable)
+            for (size_t col = 0; col < INPUT_SIZE + OUTPUT_SIZE; ++col) {
+              weight_gradients[row][col] += gradient * combined_input[col];
+              combined_input_gradient[col] += weights[row][col] * gradient;
+            }
+          }
+        };
+    accumulate_gate(W_f, W_f_grad, B_f_grad, forget_score_gradient);
+    accumulate_gate(W_i, W_i_grad, B_i_grad, input_score_gradient);
+    accumulate_gate(W_c, W_c_grad, B_c_grad, candidate_score_gradient);
+    accumulate_gate(W_o, W_o_grad, B_o_grad, output_score_gradient);
+
+    // Forward: z = [input, previous_hidden]. Split its gradient in the same
+    // order.
+    std::copy_n(combined_input_gradient.begin(), INPUT_SIZE,
+                result.input_gradient.begin());
+    std::copy_n(combined_input_gradient.begin() + INPUT_SIZE, OUTPUT_SIZE,
+                result.previous_hidden_gradient.begin());
+
+    // Clean up and return
+    cache.pop_back();
+    return result;
+  }
+
+  void apply_gradient(T learning_rate) {
+    for (size_t i=0;i<OUTPUT_SIZE; ++i) {
+      for (size_t j=0;j<OUTPUT_SIZE + INPUT_SIZE; ++j) {
+        W_f[i][j] -= learning_rate * W_f_grad[i][j];
+        W_i[i][j] -= learning_rate * W_i_grad[i][j];
+        W_c[i][j] -= learning_rate * W_c_grad[i][j];
+        W_o[i][j] -= learning_rate * W_o_grad[i][j];
+      }
+
+      B_f[i] -= learning_rate * B_f_grad[i];
+      B_i[i] -= learning_rate * B_i_grad[i];
+      B_c[i] -= learning_rate * B_c_grad[i];
+      B_o[i] -= learning_rate * B_o_grad[i];
+    }
+  }
+
+private:
+  // Weight's Gradient
+  weight_t W_f_grad{}; // forget
+  weight_t W_i_grad{}; // input
+  weight_t W_c_grad{}; // candidate
+  weight_t W_o_grad{}; // output
+
+  // Biases
+  out_t B_f_grad{}; // forget
+  out_t B_i_grad{}; // input
+  out_t B_c_grad{}; // candidate
+  out_t B_o_grad{}; // output
 };
