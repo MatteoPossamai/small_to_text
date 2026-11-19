@@ -1,5 +1,6 @@
 #include "lstm.hpp"
 
+#include <array>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -85,5 +86,13 @@ int main() {
   }
 
   std::cout << '\n';
+  lstm.reset_state();
+  lstm.forward_pass({1.0});
+  lstm.forward_pass({-0.3});
+  lstm.forward_pass({0.2});
+  auto res = lstm.forward_pass({-0.5});
+  for (const auto &v : res) {
+    std::cout << v << std::endl;
+  }
   return 0;
 }
