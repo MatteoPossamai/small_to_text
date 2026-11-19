@@ -4,7 +4,12 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+#include <memory>
 #include <random>
+#include <string>
 #include <vector>
 
 enum class Platform { X86_64, VULKAN_GPU, ANY };
@@ -230,6 +235,83 @@ public:
   LSTM(LSTM &&src) = default;
   LSTM &operator=(const LSTM &rhs) = default;
   LSTM &operator=(LSTM &&rhs) = default;
+
+  // Save parameters only; recurrent memory, caches, and gradients are temporary.
+  bool to_file(const std::string &file_path) const {
+    std::ofstream file(file_path);
+    if (!file)
+      return false;
+
+    file << "LSTM_V1 " << INPUT_SIZE << ' ' << OUTPUT_SIZE << '\n';
+    file << std::setprecision(std::numeric_limits<T>::max_digits10);
+
+    const auto write_values = [&file](const auto &values) {
+      for (const auto &value : values)
+        file << value << ' ';
+      file << '\n';
+    };
+    // Gate order is forget, input, candidate, output; biases precede matrices.
+    for (const auto *bias : {&B_f, &B_i, &B_c, &B_o})
+      write_values(*bias);
+    for (const auto *weights : {&W_f, &W_i, &W_c, &W_o}) {
+      for (const auto &row : *weights)
+        write_values(row);
+    }
+
+    file.close();
+    return static_cast<bool>(file);
+  }
+
+  bool from_file(const std::string &file_path) {
+    std::ifstream file(file_path);
+    if (!file)
+      return false;
+
+    std::string format;
+    size_t input_size, output_size;
+    if (!(file >> format >> input_size >> output_size) || format != "LSTM_V1" ||
+        input_size != INPUT_SIZE || output_size != OUTPUT_SIZE)
+      return false;
+
+    // Read into temporary storage so a bad file cannot partially replace weights.
+    // Keep large matrices off the stack.
+    struct Parameters {
+      weight_t W_f{}, W_i{}, W_c{}, W_o{};
+      out_t B_f{}, B_i{}, B_c{}, B_o{};
+    };
+    auto loaded = std::make_unique<Parameters>();
+    const auto read_values = [&file](auto &values) {
+      for (auto &value : values) {
+        if (!(file >> value) || !std::isfinite(value))
+          return false;
+      }
+      return true;
+    };
+    for (auto *bias : {&loaded->B_f, &loaded->B_i, &loaded->B_c, &loaded->B_o}) {
+      if (!read_values(*bias))
+        return false;
+    }
+    for (auto *weights : {&loaded->W_f, &loaded->W_i, &loaded->W_c, &loaded->W_o}) {
+      for (auto &row : *weights) {
+        if (!read_values(row))
+          return false;
+      }
+    }
+    file >> std::ws;
+    if (file.bad() || !file.eof())
+      return false;
+
+    W_f = loaded->W_f;
+    W_i = loaded->W_i;
+    W_c = loaded->W_c;
+    W_o = loaded->W_o;
+    B_f = loaded->B_f;
+    B_i = loaded->B_i;
+    B_c = loaded->B_c;
+    B_o = loaded->B_o;
+    reset_state();
+    return true;
+  }
 
   out_t forward_pass(const in_t &x) {
     // if constexpr (platform == Platform::X86_64) {

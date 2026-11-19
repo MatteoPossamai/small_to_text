@@ -1,5 +1,9 @@
 #include "../src/seq_2_seq/lstm.hpp"
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -45,7 +49,7 @@ void check_supplied_parameters() {
   std::array<double, 8> zero{}, candidate_bias{};
   candidate_bias.fill(1.0);
   LSTM<double, 2, 8, Platform::ANY> model(weights, weights, weights, weights,
-                                      zero, zero, candidate_bias, zero);
+                                          zero, zero, candidate_bias, zero);
   const double expected = 0.5 * std::tanh(0.5 * std::tanh(1.0));
   for (const double value : model.forward_pass({0.0, 0.0})) {
     if (std::abs(value - expected) > 1e-12)
@@ -128,9 +132,9 @@ void check_forward_modes() {
   }
 }
 
-// Compare actual updates against a separately constructed model whose parameters
-// were updated using numerical gradients. Probe different input histories so
-// agreement is checked on more than a single scalar loss.
+// Compare actual updates against a separately constructed model whose
+// parameters were updated using numerical gradients. Probe different input
+// histories so agreement is checked on more than a single scalar loss.
 void check_model_outputs(GradientModel &actual, Parameters &parameters) {
   const std::array<Sequence, 3> probes{{
       {{{{0.4, -0.3}}, {{-0.2, 0.7}}, {{0.6, 0.1}}}},
@@ -201,7 +205,8 @@ void check_gradients() {
   for (size_t step = 0; step < sequence.size(); ++step) {
     for (size_t feature = 0; feature < sequence[step].size(); ++feature)
       check_close(d_inputs[step][feature],
-                  numerical_gradient(sequence[step][feature]), "Input gradient");
+                  numerical_gradient(sequence[step][feature]),
+                  "Input gradient");
   }
 
   // Backward accumulates gradients but must not change any parameters yet.
@@ -228,12 +233,141 @@ void check_gradients() {
   if (!(objective(model, sequence) < before))
     throw std::runtime_error("Gradient descent did not reduce the objective");
 
-  // reset_state clears pending gradients as well as recurrent state and history.
+  // reset_state clears pending gradients as well as recurrent state and
+  // history.
   auto reset_model = make_model(parameters);
   backward(reset_model, sequence);
   reset_model.reset_state();
   reset_model.apply_gradient(learning_rate);
   check_model_outputs(reset_model, parameters);
+}
+
+struct TemporaryDirectory {
+  std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      ("small_to_text_lstm_" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+
+  TemporaryDirectory() {
+    if (!std::filesystem::create_directory(path))
+      throw std::runtime_error("Could not create temporary test directory");
+  }
+  ~TemporaryDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(path, error);
+  }
+};
+
+std::string file_contents(const std::filesystem::path &path) {
+  std::ifstream input(path);
+  if (!input)
+    throw std::runtime_error("Could not read test model");
+  std::ostringstream result;
+  result << input.rdbuf();
+  return result.str();
+}
+
+template <typename T> void check_serialization() {
+  using Model = LSTM<T, 2, 8, Platform::ANY>;
+  const std::array<typename Model::in_t, 3> sequence{
+      {{{T{0.4}, T{-0.3}}}, {{T{-0.2}, T{0.7}}}, {{T{0.6}, T{0.1}}}}};
+  typename Model::out_t d_hidden{}, d_cell{};
+  d_hidden.fill(T{0.2});
+  d_cell.fill(T{-0.03});
+  const auto accumulate = [&](Model &model) {
+    model.reset_state();
+    for (const auto &input : sequence)
+      model.forward_pass_train(input);
+    auto hidden = d_hidden, cell = d_cell;
+    for (size_t step = sequence.size(); step-- > 0;) {
+      const auto result = model.backward_pass(hidden, cell);
+      hidden = result.previous_hidden_gradient;
+      cell = result.previous_cell_gradient;
+    }
+  };
+
+  TemporaryDirectory directory;
+  const auto saved = directory.path / "model.txt";
+  const auto rewritten = directory.path / "rewritten.txt";
+  const auto save_text = [&](const Model &model,
+                             const std::filesystem::path &path) {
+    if (!model.to_file(path.string()))
+      throw std::runtime_error("Could not save test model");
+    return file_contents(path);
+  };
+  Model trained(12345);
+  accumulate(trained);
+  trained.apply_gradient(T{0.05});
+  const auto text = save_text(trained, saved);
+
+  // Load into a model that already has memory, history and pending gradients.
+  Model restored(67890);
+  accumulate(restored);
+  restored.forward_pass_train(sequence[0]);
+  if (!restored.from_file(saved.string()) ||
+      save_text(restored, rewritten) != text)
+    throw std::runtime_error("Model serialization lost parameter precision");
+  restored.apply_gradient(T{0.05});
+  if (save_text(restored, rewritten) != text)
+    throw std::runtime_error("Loading preserved stale parameter gradients");
+  trained.reset_state();
+  for (const auto &input : sequence) {
+    if (trained.forward_pass(input) != restored.forward_pass(input))
+      throw std::runtime_error("Loaded model did not start with empty memory");
+  }
+
+  // Continuing training after a roundtrip must produce identical parameters.
+  accumulate(trained);
+  accumulate(restored);
+  trained.apply_gradient(T{0.05});
+  restored.apply_gradient(T{0.05});
+  if (save_text(trained, saved) != save_text(restored, rewritten))
+    throw std::runtime_error(
+        "Training changed after a serialization roundtrip");
+
+  // Preserve a partly consumed training history when loading fails.
+  trained.reset_state();
+  trained.forward_pass_train(sequence[0]);
+  trained.forward_pass_train(sequence[1]);
+  trained.backward_pass(d_hidden, d_cell);
+  const auto malformed = directory.path / "malformed.txt";
+  const std::array<std::string, 7> invalid{"LSTM_V2 2 8\n",
+                                           "LSTM_V1 3 8\n",
+                                           "LSTM_V1 2 16\n",
+                                           text.substr(0, text.size() / 2),
+                                           "LSTM_V1 2 8\nnonnumeric\n",
+                                           "LSTM_V1 2 8\ninf\n",
+                                           text + "trailing_token\n"};
+  const auto check_rejected = [&](const std::filesystem::path &path) {
+    auto actual = trained, expected = trained;
+    if (actual.from_file(path.string()))
+      throw std::runtime_error("Invalid model was accepted");
+    if (actual.forward_pass(sequence[2]) != expected.forward_pass(sequence[2]))
+      throw std::runtime_error("Failed load changed recurrent state");
+    const auto actual_back = actual.backward_pass(d_hidden, d_cell);
+    const auto expected_back = expected.backward_pass(d_hidden, d_cell);
+    if (actual_back.input_gradient != expected_back.input_gradient ||
+        actual_back.previous_hidden_gradient !=
+            expected_back.previous_hidden_gradient ||
+        actual_back.previous_cell_gradient !=
+            expected_back.previous_cell_gradient)
+      throw std::runtime_error("Failed load changed cached training history");
+    actual.apply_gradient(T{0.05});
+    expected.apply_gradient(T{0.05});
+    if (save_text(actual, saved) != save_text(expected, rewritten))
+      throw std::runtime_error("Failed load changed parameters or gradients");
+  };
+  for (const auto &contents : invalid) {
+    {
+      std::ofstream output(malformed);
+      output << contents;
+    }
+    check_rejected(malformed);
+  }
+  check_rejected(directory.path / "missing.txt");
+  if (trained.to_file((directory.path / "missing" / "model.txt").string()))
+    throw std::runtime_error("Saving under a missing parent succeeded");
 }
 
 } // namespace
@@ -245,7 +379,10 @@ int main() {
     check_supplied_parameters();
     check_forward_modes();
     check_gradients();
-    std::cout << "LSTM initialization, reset, and gradient tests passed\n";
+    check_serialization<float>();
+    check_serialization<double>();
+    std::cout
+        << "LSTM initialization, gradient, and serialization tests passed\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;
