@@ -6,11 +6,12 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
-template <typename T> void check_initialization_and_reset() {
-  using Model = LSTM<T, 2, 8, Platform::ANY>;
+template <typename T, bool TRAIN_ENABLED> void check_initialization_and_reset() {
+  using Model = LSTM<T, 2, 8, Platform::ANY, TRAIN_ENABLED>;
   Model first(12345), same_seed(12345), other_seed(67890);
   const std::array<T, 2> input{T{0.5}, T{-0.25}};
   const auto initial = first.forward_pass(input);
@@ -48,8 +49,8 @@ void check_supplied_parameters() {
   std::array<std::array<double, 10>, 8> weights{};
   std::array<double, 8> zero{}, candidate_bias{};
   candidate_bias.fill(1.0);
-  LSTM<double, 2, 8, Platform::ANY> model(weights, weights, weights, weights,
-                                          zero, zero, candidate_bias, zero);
+  LSTM<double, 2, 8, Platform::ANY, true> model(weights, weights, weights, weights,
+                                            zero, zero, candidate_bias, zero);
   const double expected = 0.5 * std::tanh(0.5 * std::tanh(1.0));
   for (const double value : model.forward_pass({0.0, 0.0})) {
     if (std::abs(value - expected) > 1e-12)
@@ -57,8 +58,33 @@ void check_supplied_parameters() {
   }
 }
 
-using GradientModel = LSTM<double, 2, 8, Platform::ANY>;
+using GradientModel = LSTM<double, 2, 8, Platform::ANY, true>;
+using InferenceModel = LSTM<double, 2, 8, Platform::ANY, false>;
 using Sequence = std::array<GradientModel::in_t, 3>;
+
+template <typename Model>
+concept HasTrainingForward = requires(Model &model, typename Model::in_t input) {
+  model.forward_pass_train(input);
+};
+
+template <typename Model>
+concept HasBackward = requires(Model &model, typename Model::out_t gradient) {
+  model.backward_pass(gradient, gradient);
+};
+
+template <typename Model>
+concept HasGradientUpdate = requires(Model &model) {
+  model.apply_gradient(0.1);
+};
+
+static_assert(HasTrainingForward<GradientModel> && HasBackward<GradientModel> &&
+              HasGradientUpdate<GradientModel>);
+static_assert(!HasTrainingForward<InferenceModel> && !HasBackward<InferenceModel> &&
+              !HasGradientUpdate<InferenceModel>);
+static_assert(sizeof(GradientModel) >= sizeof(InferenceModel) +
+                  4 * sizeof(GradientModel::weight_t) +
+                  4 * sizeof(GradientModel::out_t) +
+                  sizeof(std::vector<GradientModel::StepCache>));
 
 // Test-owned parameters: the LSTM keeps its parameters and gradients private.
 struct Parameters {
@@ -121,14 +147,16 @@ void check_close(double actual, double expected, const std::string &name) {
                              ", expected " + std::to_string(expected));
 }
 
-void check_forward_modes() {
-  GradientModel inference(12345), training(12345);
-  const Sequence sequence{{{{0.4, -0.3}}, {{-0.2, 0.7}}, {{0.6, 0.1}}}};
+template <typename T> void check_forward_modes() {
+  LSTM<T, 2, 8, Platform::ANY, false> inference(12345);
+  LSTM<T, 2, 8, Platform::ANY, true> training(12345), training_inference(12345);
+  const std::array<typename decltype(inference)::in_t, 3> sequence{
+      {{{T{0.4}, T{-0.3}}}, {{T{-0.2}, T{0.7}}}, {{T{0.6}, T{0.1}}}}};
   for (const auto &input : sequence) {
     const auto expected = inference.forward_pass(input);
     const auto actual = training.forward_pass_train(input);
-    for (size_t neuron = 0; neuron < actual.size(); ++neuron)
-      check_close(actual[neuron], expected[neuron], "Training forward output");
+    if (actual != expected || training_inference.forward_pass(input) != expected)
+      throw std::runtime_error("Forward output changed with training mode");
   }
 }
 
@@ -269,7 +297,8 @@ std::string file_contents(const std::filesystem::path &path) {
 }
 
 template <typename T> void check_serialization() {
-  using Model = LSTM<T, 2, 8, Platform::ANY>;
+  using Model = LSTM<T, 2, 8, Platform::ANY, true>;
+  using Inference = LSTM<T, 2, 8, Platform::ANY, false>;
   const std::array<typename Model::in_t, 3> sequence{
       {{{T{0.4}, T{-0.3}}}, {{T{-0.2}, T{0.7}}}, {{T{0.6}, T{0.1}}}}};
   typename Model::out_t d_hidden{}, d_cell{};
@@ -290,7 +319,7 @@ template <typename T> void check_serialization() {
   TemporaryDirectory directory;
   const auto saved = directory.path / "model.txt";
   const auto rewritten = directory.path / "rewritten.txt";
-  const auto save_text = [&](const Model &model,
+  const auto save_text = [&](const auto &model,
                              const std::filesystem::path &path) {
     if (!model.to_file(path.string()))
       throw std::runtime_error("Could not save test model");
@@ -325,6 +354,35 @@ template <typename T> void check_serialization() {
   if (save_text(trained, saved) != save_text(restored, rewritten))
     throw std::runtime_error(
         "Training changed after a serialization roundtrip");
+
+  // Training and inference use the same parameter file in both directions.
+  Inference inference(67890);
+  inference.forward_pass(sequence[0]);
+  if (!inference.from_file(saved.string()) ||
+      save_text(inference, rewritten) != file_contents(saved))
+    throw std::runtime_error("Training-to-inference serialization failed");
+  Model from_inference(42);
+  if (!from_inference.from_file(rewritten.string()))
+    throw std::runtime_error("Inference-to-training serialization failed");
+  trained.reset_state();
+  for (const auto &input : sequence) {
+    const auto expected = trained.forward_pass(input);
+    if (inference.forward_pass(input) != expected ||
+        from_inference.forward_pass(input) != expected)
+      throw std::runtime_error("Cross-mode load changed inference output");
+  }
+
+  const auto mismatch = directory.path / "mismatch.txt";
+  {
+    std::ofstream output(mismatch);
+    output << "LSTM_V1 3 8\n";
+  }
+  auto expected_inference = inference;
+  if (inference.from_file(mismatch.string()) ||
+      inference.forward_pass(sequence[0]) !=
+          expected_inference.forward_pass(sequence[0]) ||
+      save_text(inference, saved) != save_text(expected_inference, rewritten))
+    throw std::runtime_error("Mismatched load changed inference model");
 
   // Preserve a partly consumed training history when loading fails.
   trained.reset_state();
@@ -374,10 +432,13 @@ template <typename T> void check_serialization() {
 
 int main() {
   try {
-    check_initialization_and_reset<float>();
-    check_initialization_and_reset<double>();
+    check_initialization_and_reset<float, true>();
+    check_initialization_and_reset<float, false>();
+    check_initialization_and_reset<double, true>();
+    check_initialization_and_reset<double, false>();
     check_supplied_parameters();
-    check_forward_modes();
+    check_forward_modes<float>();
+    check_forward_modes<double>();
     check_gradients();
     check_serialization<float>();
     check_serialization<double>();

@@ -10,12 +10,13 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 enum class Platform { X86_64, VULKAN_GPU, ANY };
 
 template <std::floating_point T, size_t INPUT_SIZE, size_t OUTPUT_SIZE,
-          Platform platform>
+          Platform platform, bool TRAIN_ENABLED = true>
 class LSTM {
 
   static_assert(INPUT_SIZE > 0);
@@ -47,6 +48,18 @@ public:
   };
 
 private:
+  struct TrainingData {
+    std::vector<StepCache> cache;
+    weight_t W_f_grad{}, W_i_grad{}, W_c_grad{}, W_o_grad{};
+    out_t B_f_grad{}, B_i_grad{}, B_c_grad{}, B_o_grad{};
+  };
+
+  struct NoTraining {};
+
+  // Inference instances contain neither the cache nor the gradient arrays.
+  [[no_unique_address]]
+  std::conditional_t<TRAIN_ENABLED, TrainingData, NoTraining> training{};
+
   // Memory
   mem_t l_t_mem{}; // Long term memory, or c
   mem_t s_t_mem{}; // Short term memory, or h
@@ -62,9 +75,6 @@ private:
   out_t B_i{}; // input
   out_t B_c{}; // candidate
   out_t B_o{}; // output
-
-  // Training cache
-  std::vector<StepCache> cache;
 
   __attribute__((always_inline)) inline T sigmoid(T x) {
     return T{1} / (T{1} + std::exp(-x));
@@ -114,7 +124,7 @@ private:
     }
   }
 
-  out_t forward_scalar_train(const in_t &x) {
+  out_t forward_scalar_train(const in_t &x) requires(TRAIN_ENABLED) {
     StepCache cache_i{};
     cache_i.input = x;
     cache_i.prev_l_t_mem = l_t_mem;
@@ -150,7 +160,7 @@ private:
       s_t_mem[i] = std::tanh(l_t_mem[i]) * output_gate[i];
     }
 
-    cache.push_back(cache_i);
+    training.cache.push_back(cache_i);
     return s_t_mem;
   }
 
@@ -204,19 +214,21 @@ public:
   void reset_state() {
     l_t_mem.fill(T{0});
     s_t_mem.fill(T{0});
-    cache.clear();
+    if constexpr (TRAIN_ENABLED) {
+      training.cache.clear();
 
-    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
-      W_f_grad[i].fill(0);
-      W_i_grad[i].fill(0);
-      W_c_grad[i].fill(0);
-      W_o_grad[i].fill(0);
+      for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
+        training.W_f_grad[i].fill(0);
+        training.W_i_grad[i].fill(0);
+        training.W_c_grad[i].fill(0);
+        training.W_o_grad[i].fill(0);
+      }
+
+      training.B_f_grad.fill(0);
+      training.B_i_grad.fill(0);
+      training.B_c_grad.fill(0);
+      training.B_o_grad.fill(0);
     }
-
-    B_f_grad.fill(0);
-    B_i_grad.fill(0);
-    B_c_grad.fill(0);
-    B_o_grad.fill(0);
   }
 
   LSTM(weight_t &W_f_in, weight_t &W_i_in, weight_t &W_c_in, weight_t &W_o_in,
@@ -322,17 +334,18 @@ public:
   }
 
   // Training API
-  // TODO: can be wrapped at compile time to avoid memory loss at inference?
 
-  out_t forward_pass_train(const in_t &x) {
+  out_t forward_pass_train(const in_t &x) requires(TRAIN_ENABLED) {
     // TODO: x86 one
     return forward_scalar_train(x);
   }
 
   BackwardResult backward_pass(const out_t &hidden_gradient,
-                               const out_t &cell_gradient) {
+                               const out_t &cell_gradient)
+    requires(TRAIN_ENABLED)
+  {
     // Consume one saved forward step, starting with the most recent one.
-    const StepCache &last_cached = cache.back();
+    const StepCache &last_cached = training.cache.back();
     const auto &forget = last_cached.forget_gate;
     const auto &input = last_cached.input_gate;
     const auto &cand = last_cached.candidate_gate;
@@ -410,10 +423,14 @@ public:
             }
           }
         };
-    accumulate_gate(W_f, W_f_grad, B_f_grad, forget_score_gradient);
-    accumulate_gate(W_i, W_i_grad, B_i_grad, input_score_gradient);
-    accumulate_gate(W_c, W_c_grad, B_c_grad, candidate_score_gradient);
-    accumulate_gate(W_o, W_o_grad, B_o_grad, output_score_gradient);
+    accumulate_gate(W_f, training.W_f_grad, training.B_f_grad,
+                    forget_score_gradient);
+    accumulate_gate(W_i, training.W_i_grad, training.B_i_grad,
+                    input_score_gradient);
+    accumulate_gate(W_c, training.W_c_grad, training.B_c_grad,
+                    candidate_score_gradient);
+    accumulate_gate(W_o, training.W_o_grad, training.B_o_grad,
+                    output_score_gradient);
 
     // Forward: z = [input, previous_hidden]. Split its gradient in the same
     // order.
@@ -423,36 +440,23 @@ public:
                 result.previous_hidden_gradient.begin());
 
     // Clean up and return
-    cache.pop_back();
+    training.cache.pop_back();
     return result;
   }
 
-  void apply_gradient(T learning_rate) {
+  void apply_gradient(T learning_rate) requires(TRAIN_ENABLED) {
     for (size_t i=0;i<OUTPUT_SIZE; ++i) {
       for (size_t j=0;j<OUTPUT_SIZE + INPUT_SIZE; ++j) {
-        W_f[i][j] -= learning_rate * W_f_grad[i][j];
-        W_i[i][j] -= learning_rate * W_i_grad[i][j];
-        W_c[i][j] -= learning_rate * W_c_grad[i][j];
-        W_o[i][j] -= learning_rate * W_o_grad[i][j];
+        W_f[i][j] -= learning_rate * training.W_f_grad[i][j];
+        W_i[i][j] -= learning_rate * training.W_i_grad[i][j];
+        W_c[i][j] -= learning_rate * training.W_c_grad[i][j];
+        W_o[i][j] -= learning_rate * training.W_o_grad[i][j];
       }
 
-      B_f[i] -= learning_rate * B_f_grad[i];
-      B_i[i] -= learning_rate * B_i_grad[i];
-      B_c[i] -= learning_rate * B_c_grad[i];
-      B_o[i] -= learning_rate * B_o_grad[i];
+      B_f[i] -= learning_rate * training.B_f_grad[i];
+      B_i[i] -= learning_rate * training.B_i_grad[i];
+      B_c[i] -= learning_rate * training.B_c_grad[i];
+      B_o[i] -= learning_rate * training.B_o_grad[i];
     }
   }
-
-private:
-  // Weight's Gradient
-  weight_t W_f_grad{}; // forget
-  weight_t W_i_grad{}; // input
-  weight_t W_c_grad{}; // candidate
-  weight_t W_o_grad{}; // output
-
-  // Biases
-  out_t B_f_grad{}; // forget
-  out_t B_i_grad{}; // input
-  out_t B_c_grad{}; // candidate
-  out_t B_o_grad{}; // output
 };
