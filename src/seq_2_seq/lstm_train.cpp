@@ -15,7 +15,7 @@ constexpr size_t EPOCHS = 40;
 constexpr size_t TRAINING_SAMPLES = 512;
 constexpr std::uint32_t SEED = 12345;
 
-using RecurrentModel = LSTM<double, INPUT_SIZE, HIDDEN_SIZE, Platform::ANY, true>;
+using RecurrentModel = LSTM<double, INPUT_SIZE, HIDDEN_SIZE, true>;
 
 struct Sample {
   std::array<RecurrentModel::in_t, SEQUENCE_LENGTH> frames{};

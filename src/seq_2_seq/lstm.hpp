@@ -13,10 +13,8 @@
 #include <type_traits>
 #include <vector>
 
-enum class Platform { X86_64, VULKAN_GPU, ANY };
-
 template <std::floating_point T, size_t INPUT_SIZE, size_t OUTPUT_SIZE,
-          Platform platform, bool TRAIN_ENABLED = true>
+          bool TRAIN_ENABLED = true>
 class LSTM {
 
   static_assert(INPUT_SIZE > 0);
@@ -124,7 +122,9 @@ private:
     }
   }
 
-  out_t forward_scalar_train(const in_t &x) requires(TRAIN_ENABLED) {
+  out_t forward_scalar_train(const in_t &x)
+    requires(TRAIN_ENABLED)
+  {
     StepCache cache_i{};
     cache_i.input = x;
     cache_i.prev_l_t_mem = l_t_mem;
@@ -248,7 +248,8 @@ public:
   LSTM &operator=(const LSTM &rhs) = default;
   LSTM &operator=(LSTM &&rhs) = default;
 
-  // Save parameters only; recurrent memory, caches, and gradients are temporary.
+  // Save parameters only; recurrent memory, caches, and gradients are
+  // temporary.
   bool to_file(const std::string &file_path) const {
     std::ofstream file(file_path);
     if (!file)
@@ -285,8 +286,8 @@ public:
         input_size != INPUT_SIZE || output_size != OUTPUT_SIZE)
       return false;
 
-    // Read into temporary storage so a bad file cannot partially replace weights.
-    // Keep large matrices off the stack.
+    // Read into temporary storage so a bad file cannot partially replace
+    // weights. Keep large matrices off the stack.
     struct Parameters {
       weight_t W_f{}, W_i{}, W_c{}, W_o{};
       out_t B_f{}, B_i{}, B_c{}, B_o{};
@@ -299,11 +300,13 @@ public:
       }
       return true;
     };
-    for (auto *bias : {&loaded->B_f, &loaded->B_i, &loaded->B_c, &loaded->B_o}) {
+    for (auto *bias :
+         {&loaded->B_f, &loaded->B_i, &loaded->B_c, &loaded->B_o}) {
       if (!read_values(*bias))
         return false;
     }
-    for (auto *weights : {&loaded->W_f, &loaded->W_i, &loaded->W_c, &loaded->W_o}) {
+    for (auto *weights :
+         {&loaded->W_f, &loaded->W_i, &loaded->W_c, &loaded->W_o}) {
       for (auto &row : *weights) {
         if (!read_values(row))
           return false;
@@ -325,18 +328,13 @@ public:
     return true;
   }
 
-  out_t forward_pass(const in_t &x) {
-    // if constexpr (platform == Platform::X86_64) {
-    //   return forward_x86(x); // TODO: implement
-    // } else {
-    return forward_scalar(x);
-    // }
-  }
+  out_t forward_pass(const in_t &x) { return forward_scalar(x); }
 
   // Training API
 
-  out_t forward_pass_train(const in_t &x) requires(TRAIN_ENABLED) {
-    // TODO: x86 one
+  out_t forward_pass_train(const in_t &x)
+    requires(TRAIN_ENABLED)
+  {
     return forward_scalar_train(x);
   }
 
@@ -444,9 +442,11 @@ public:
     return result;
   }
 
-  void apply_gradient(T learning_rate) requires(TRAIN_ENABLED) {
-    for (size_t i=0;i<OUTPUT_SIZE; ++i) {
-      for (size_t j=0;j<OUTPUT_SIZE + INPUT_SIZE; ++j) {
+  void apply_gradient(T learning_rate)
+    requires(TRAIN_ENABLED)
+  {
+    for (size_t i = 0; i < OUTPUT_SIZE; ++i) {
+      for (size_t j = 0; j < OUTPUT_SIZE + INPUT_SIZE; ++j) {
         W_f[i][j] -= learning_rate * training.W_f_grad[i][j];
         W_i[i][j] -= learning_rate * training.W_i_grad[i][j];
         W_c[i][j] -= learning_rate * training.W_c_grad[i][j];
