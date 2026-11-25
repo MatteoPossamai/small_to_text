@@ -2,7 +2,6 @@
 #include "las.hpp"
 #include <exception>
 #include <iostream>
-#include <memory>
 #include <string>
 
 int main() {
@@ -15,7 +14,7 @@ int main() {
   try {
     const auto frames = audio_decoder::decode_wav<double>(filename);
     const auto input = audio_decoder::input_window<INPUT_SAMPLE>(frames);
-    auto las = std::make_unique<LAS<double, false>>();
+    auto las = LAS<double, false>::load_weights();
     std::cout << las->inference(input) << '\n';
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

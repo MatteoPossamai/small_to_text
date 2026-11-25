@@ -5,8 +5,14 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <memory>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 template <std::floating_point T, size_t H_SIZE, size_t IN_SIZE, size_t OUT_SIZE>
@@ -130,6 +136,89 @@ public:
   MLP(MLP &&) = delete;
   MLP &operator=(const MLP &) = delete;
   MLP &operator=(MLP &&) = delete;
+
+  bool to_file(const std::string &file_path) const {
+    std::ofstream file(file_path);
+    if (!file)
+      return false;
+
+    file.imbue(std::locale::classic());
+    file << "MLP_V1 " << IN_SIZE << ' ' << H_SIZE << ' ' << OUT_SIZE << '\n';
+    file << std::setprecision(std::numeric_limits<T>::max_digits10);
+
+    const auto write_values = [&file](const auto &values) {
+      for (T value : values) {
+        if (!std::isfinite(value))
+          return false;
+        file << value << ' ';
+      }
+      return static_cast<bool>(file << '\n');
+    };
+    const auto write_layer = [&write_values](const auto &layer) {
+      if (!write_values(layer.bias))
+        return false;
+      for (const auto &row : layer.weights)
+        if (!write_values(row))
+          return false;
+      return true;
+    };
+    // Write each layer's biases followed by its weight rows.
+    if (!write_layer(hidden_layer) || !write_layer(output_layer))
+      return false;
+
+    file.close();
+    return static_cast<bool>(file);
+  }
+
+  bool from_file(const std::string &file_path) {
+    std::ifstream file(file_path);
+    if (!file)
+      return false;
+
+    file.imbue(std::locale::classic());
+    std::string format;
+    size_t input_size, hidden_size, output_size;
+    if (!(file >> format >> input_size >> hidden_size >> output_size) ||
+        format != "MLP_V1" || input_size != IN_SIZE || hidden_size != H_SIZE ||
+        output_size != OUT_SIZE)
+      return false;
+
+    // Load large matrices on the heap and commit only after validation.
+    struct Parameters {
+      decltype(hidden_layer.weights) hidden_weights;
+      decltype(hidden_layer.bias) hidden_bias;
+      decltype(output_layer.weights) output_weights;
+      decltype(output_layer.bias) output_bias;
+    };
+    auto loaded = std::make_unique<Parameters>();
+    const auto read_values = [&file](auto &values) {
+      for (T &value : values)
+        if (!(file >> value) || !std::isfinite(value))
+          return false;
+      return true;
+    };
+    const auto read_layer = [&read_values](auto &bias, auto &weights) {
+      if (!read_values(bias))
+        return false;
+      for (auto &row : weights)
+        if (!read_values(row))
+          return false;
+      return true;
+    };
+    if (!read_layer(loaded->hidden_bias, loaded->hidden_weights) ||
+        !read_layer(loaded->output_bias, loaded->output_weights))
+      return false;
+    file >> std::ws;
+    if (file.bad() || !file.eof())
+      return false;
+
+    hidden_layer.weights = loaded->hidden_weights;
+    hidden_layer.bias = loaded->hidden_bias;
+    output_layer.weights = loaded->output_weights;
+    output_layer.bias = loaded->output_bias;
+    reset_state();
+    return true;
+  }
 
   out_t forward_pass(const in_t &input) const {
     return softmax(output_layer.forward(hidden_activations(input)))

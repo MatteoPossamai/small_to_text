@@ -1,8 +1,10 @@
 #pragma once
+#include "constant.hpp"
 #include "lstm.hpp"
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <utility>
 
 template <std::floating_point T, size_t INPUT_SAMPLE, size_t SAMPLE_SIZE,
@@ -30,12 +32,37 @@ private:
   std::pair<lstm_f_t, lstm_f_t> first_layer;
   std::array<std::pair<lstm_h_t, lstm_h_t>, LAYERS - 1> layers;
 
+  template <typename Self, typename Fn>
+  static void for_each_lstm(Self &self, const Fn &fn) {
+    using las_weights::Direction;
+    const auto visit_pair = [&fn](auto &pair, std::size_t layer) {
+      fn(pair.first, las_weights::listener_filename(layer, Direction::forward));
+      fn(pair.second,
+         las_weights::listener_filename(layer, Direction::backward));
+    };
+    visit_pair(self.first_layer, 0);
+    for (std::size_t i = 0; i < self.layers.size(); ++i)
+      visit_pair(self.layers[i], i + 1);
+  }
+
 public:
   Listener() = default;
+  explicit Listener(const std::filesystem::path &directory) : Listener() {
+    for_each_lstm(*this, [&directory](auto &network, const auto &filename) {
+      las_weights::load_network(network, directory / filename);
+    });
+  }
+
   Listener(const Listener &) = delete;
   Listener(Listener &&) = delete;
   Listener &operator=(const Listener &) = delete;
   Listener &operator=(Listener &&) = delete;
+
+  void save_weights(const std::filesystem::path &directory) const {
+    for_each_lstm(*this, [&directory](auto &network, const auto &filename) {
+      las_weights::save_network(network, directory / filename);
+    });
+  }
 
   void reset_state() {
     first_layer.first.reset_state();

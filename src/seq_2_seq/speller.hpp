@@ -1,7 +1,9 @@
 #pragma once
+#include "constant.hpp"
 #include "lstm.hpp"
 #include <array>
 #include <cstddef>
+#include <filesystem>
 
 template <std::floating_point T, size_t LAYERS, size_t HIDDEN_STATES,
           size_t VOCABULARY_SIZE, bool TRAIN_ENABLED = true>
@@ -14,10 +16,24 @@ class Speller {
 
 public:
   Speller() = default;
+  explicit Speller(const std::filesystem::path &directory) : Speller() {
+    las_weights::load_network(lstm_1,
+                              directory / las_weights::speller_filenames[0]);
+    las_weights::load_network(lstm_2,
+                              directory / las_weights::speller_filenames[1]);
+  }
+
   Speller(const Speller &) = delete;
   Speller(Speller &&) = delete;
   Speller &operator=(const Speller &) = delete;
   Speller &operator=(Speller &&) = delete;
+
+  void save_weights(const std::filesystem::path &directory) const {
+    las_weights::save_network(lstm_1,
+                              directory / las_weights::speller_filenames[0]);
+    las_weights::save_network(lstm_2,
+                              directory / las_weights::speller_filenames[1]);
+  }
 
   void reset_state() {
     lstm_1.reset_state();

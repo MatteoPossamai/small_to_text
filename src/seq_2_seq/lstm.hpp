@@ -260,16 +260,24 @@ public:
     file << std::setprecision(std::numeric_limits<T>::max_digits10);
 
     const auto write_values = [&file](const auto &values) {
-      for (const auto &value : values)
+      for (const auto &value : values) {
+        if (!std::isfinite(value))
+          return false;
         file << value << ' ';
+      }
       file << '\n';
+      return static_cast<bool>(file);
     };
     // Gate order is forget, input, candidate, output; biases precede matrices.
-    for (const auto *bias : {&B_f, &B_i, &B_c, &B_o})
-      write_values(*bias);
+    for (const auto *bias : {&B_f, &B_i, &B_c, &B_o}) {
+      if (!write_values(*bias))
+        return false;
+    }
     for (const auto *weights : {&W_f, &W_i, &W_c, &W_o}) {
-      for (const auto &row : *weights)
-        write_values(row);
+      for (const auto &row : *weights) {
+        if (!write_values(row))
+          return false;
+      }
     }
 
     file.close();
