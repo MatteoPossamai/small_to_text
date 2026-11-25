@@ -1,3 +1,4 @@
+#pragma once
 #include "lstm.hpp"
 #include <array>
 #include <cstddef>
@@ -13,9 +14,10 @@ class Listener {
       INPUT_SAMPLE / (static_cast<size_t>(1 << (LAYERS - 1)));
 
   // Verifications
-  static_assert(INPUT_SAMPLE % static_cast<size_t>(std::pow(2, LAYERS)) == 0);
+  static_assert(INPUT_SAMPLE % static_cast<size_t>(1 << LAYERS) == 0);
 
   // Type aliasing
+public:
   using lstm_f_t = LSTM<T, SAMPLE_SIZE, HIDDEN_VALS, TRAIN_ENABLED>;
   using lstm_h_t = LSTM<T, HIDDEN_VALS * 4, HIDDEN_VALS, TRAIN_ENABLED>;
 
@@ -23,6 +25,7 @@ class Listener {
   using listen_in_t = std::array<std::array<T, SAMPLE_SIZE>, INPUT_SAMPLE>;
   using listen_out_t = std::array<std::array<T, HIDDEN_VALS * 2>, OUTPUT_NETS>;
 
+private:
   // Elements
   std::pair<lstm_f_t, lstm_f_t> first_layer;
   std::array<std::pair<lstm_h_t, lstm_h_t>, LAYERS - 1> layers;
