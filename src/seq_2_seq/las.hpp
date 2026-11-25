@@ -7,6 +7,9 @@
 #include <cstddef>
 #include <string>
 
+// LAS
+constexpr size_t MAX_LEN = 256;
+
 // Listener parameters
 constexpr size_t INPUT_SAMPLE = 96;
 constexpr size_t SAMPLE_SIZE = 40;
@@ -61,7 +64,8 @@ public:
     speller.reset_state();
     auto enc = listener.forward_pass(input);
 
-    while (prev_token != 41) {
+    size_t counter = 0;
+    while (prev_token != 41 && ++counter < MAX_LEN) {
       std::array<T, SPELLER_HIDDEN> new_state =
           speller.forward_pass(prev_token, prev_context);
       std::array<T, SPELLER_HIDDEN> new_context = attend(new_state, enc);
