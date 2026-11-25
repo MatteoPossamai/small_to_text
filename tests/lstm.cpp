@@ -11,7 +11,7 @@
 namespace {
 
 template <typename T, bool TRAIN_ENABLED> void check_initialization_and_reset() {
-  using Model = LSTM<T, 2, 8, Platform::ANY, TRAIN_ENABLED>;
+  using Model = LSTM<T, 2, 8, TRAIN_ENABLED>;
   Model first(12345), same_seed(12345), other_seed(67890);
   const std::array<T, 2> input{T{0.5}, T{-0.25}};
   const auto initial = first.forward_pass(input);
@@ -49,8 +49,8 @@ void check_supplied_parameters() {
   std::array<std::array<double, 10>, 8> weights{};
   std::array<double, 8> zero{}, candidate_bias{};
   candidate_bias.fill(1.0);
-  LSTM<double, 2, 8, Platform::ANY, true> model(weights, weights, weights, weights,
-                                            zero, zero, candidate_bias, zero);
+  LSTM<double, 2, 8, true> model(weights, weights, weights, weights, zero, zero,
+                                 candidate_bias, zero);
   const double expected = 0.5 * std::tanh(0.5 * std::tanh(1.0));
   for (const double value : model.forward_pass({0.0, 0.0})) {
     if (std::abs(value - expected) > 1e-12)
@@ -58,8 +58,8 @@ void check_supplied_parameters() {
   }
 }
 
-using GradientModel = LSTM<double, 2, 8, Platform::ANY, true>;
-using InferenceModel = LSTM<double, 2, 8, Platform::ANY, false>;
+using GradientModel = LSTM<double, 2, 8, true>;
+using InferenceModel = LSTM<double, 2, 8, false>;
 using Sequence = std::array<GradientModel::in_t, 3>;
 
 template <typename Model>
@@ -148,8 +148,8 @@ void check_close(double actual, double expected, const std::string &name) {
 }
 
 template <typename T> void check_forward_modes() {
-  LSTM<T, 2, 8, Platform::ANY, false> inference(12345);
-  LSTM<T, 2, 8, Platform::ANY, true> training(12345), training_inference(12345);
+  LSTM<T, 2, 8, false> inference(12345);
+  LSTM<T, 2, 8, true> training(12345), training_inference(12345);
   const std::array<typename decltype(inference)::in_t, 3> sequence{
       {{{T{0.4}, T{-0.3}}}, {{T{-0.2}, T{0.7}}}, {{T{0.6}, T{0.1}}}}};
   for (const auto &input : sequence) {
@@ -238,8 +238,9 @@ void check_gradients() {
   }
 
   // Backward accumulates gradients but must not change any parameters yet.
-  auto before_update = model;
-  check_model_outputs(before_update, parameters);
+  check_model_outputs(model, parameters);
+  // The output probes reset the model, so accumulate the gradients again.
+  backward(model, sequence);
 
   const double before = objective(parameters, sequence);
   constexpr double learning_rate = 0.1;
@@ -297,8 +298,8 @@ std::string file_contents(const std::filesystem::path &path) {
 }
 
 template <typename T> void check_serialization() {
-  using Model = LSTM<T, 2, 8, Platform::ANY, true>;
-  using Inference = LSTM<T, 2, 8, Platform::ANY, false>;
+  using Model = LSTM<T, 2, 8, true>;
+  using Inference = LSTM<T, 2, 8, false>;
   const std::array<typename Model::in_t, 3> sequence{
       {{{T{0.4}, T{-0.3}}}, {{T{-0.2}, T{0.7}}}, {{T{0.6}, T{0.1}}}}};
   typename Model::out_t d_hidden{}, d_cell{};
@@ -377,18 +378,18 @@ template <typename T> void check_serialization() {
     std::ofstream output(mismatch);
     output << "LSTM_V1 3 8\n";
   }
-  auto expected_inference = inference;
   if (inference.from_file(mismatch.string()) ||
       inference.forward_pass(sequence[0]) !=
-          expected_inference.forward_pass(sequence[0]) ||
-      save_text(inference, saved) != save_text(expected_inference, rewritten))
+          from_inference.forward_pass(sequence[0]) ||
+      save_text(inference, saved) != save_text(from_inference, rewritten))
     throw std::runtime_error("Mismatched load changed inference model");
 
   // Preserve a partly consumed training history when loading fails.
-  trained.reset_state();
-  trained.forward_pass_train(sequence[0]);
-  trained.forward_pass_train(sequence[1]);
-  trained.backward_pass(d_hidden, d_cell);
+  const auto prepare_history = [&](Model &model) {
+    model.forward_pass_train(sequence[0]);
+    model.forward_pass_train(sequence[1]);
+    model.backward_pass(d_hidden, d_cell);
+  };
   const auto malformed = directory.path / "malformed.txt";
   const std::array<std::string, 7> invalid{"LSTM_V2 2 8\n",
                                            "LSTM_V1 3 8\n",
@@ -398,7 +399,9 @@ template <typename T> void check_serialization() {
                                            "LSTM_V1 2 8\ninf\n",
                                            text + "trailing_token\n"};
   const auto check_rejected = [&](const std::filesystem::path &path) {
-    auto actual = trained, expected = trained;
+    Model actual(12345), expected(12345);
+    prepare_history(actual);
+    prepare_history(expected);
     if (actual.from_file(path.string()))
       throw std::runtime_error("Invalid model was accepted");
     if (actual.forward_pass(sequence[2]) != expected.forward_pass(sequence[2]))

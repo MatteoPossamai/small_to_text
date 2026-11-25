@@ -13,6 +13,17 @@ class Speller {
   LSTM<T, HIDDEN_STATES, HIDDEN_STATES, TRAIN_ENABLED> lstm_2;
 
 public:
+  Speller() = default;
+  Speller(const Speller &) = delete;
+  Speller(Speller &&) = delete;
+  Speller &operator=(const Speller &) = delete;
+  Speller &operator=(Speller &&) = delete;
+
+  void reset_state() {
+    lstm_1.reset_state();
+    lstm_2.reset_state();
+  }
+
   context_out_t forward_pass(char prev_token,
                              const context_out_t &prev_context) {
     context_in_t input{}; // Already zero, so no need to zero on the one_hot

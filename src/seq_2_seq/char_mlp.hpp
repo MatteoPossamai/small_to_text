@@ -127,7 +127,9 @@ public:
   }
 
   MLP(const MLP &) = delete;
+  MLP(MLP &&) = delete;
   MLP &operator=(const MLP &) = delete;
+  MLP &operator=(MLP &&) = delete;
 
   out_t forward_pass(const in_t &input) const {
     return softmax(output_layer.forward(hidden_activations(input)))

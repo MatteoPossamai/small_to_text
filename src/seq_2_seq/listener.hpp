@@ -31,6 +31,12 @@ private:
   std::array<std::pair<lstm_h_t, lstm_h_t>, LAYERS - 1> layers;
 
 public:
+  Listener() = default;
+  Listener(const Listener &) = delete;
+  Listener(Listener &&) = delete;
+  Listener &operator=(const Listener &) = delete;
+  Listener &operator=(Listener &&) = delete;
+
   void reset_state() {
     first_layer.first.reset_state();
     first_layer.second.reset_state();

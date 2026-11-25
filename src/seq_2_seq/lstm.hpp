@@ -244,10 +244,10 @@ public:
     B_o = B_o_in;
   }
 
-  LSTM(const LSTM &src) = default;
-  LSTM(LSTM &&src) = default;
-  LSTM &operator=(const LSTM &rhs) = default;
-  LSTM &operator=(LSTM &&rhs) = default;
+  LSTM(const LSTM &) = delete;
+  LSTM(LSTM &&) = delete;
+  LSTM &operator=(const LSTM &) = delete;
+  LSTM &operator=(LSTM &&) = delete;
 
   // Save parameters only; recurrent memory, caches, and gradients are
   // temporary.

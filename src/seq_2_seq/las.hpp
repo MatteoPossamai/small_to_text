@@ -42,6 +42,12 @@ template <std::floating_point T, bool TRAIN_ENABLED = true> class LAS {
   }
 
 public:
+  LAS() = default;
+  LAS(const LAS &) = delete;
+  LAS(LAS &&) = delete;
+  LAS &operator=(const LAS &) = delete;
+  LAS &operator=(LAS &&) = delete;
+
   std::string
   inference(const std::array<std::array<T, SAMPLE_SIZE>, INPUT_SAMPLE> &input) {
     prev_token = 42;
@@ -50,8 +56,9 @@ public:
     std::string res{};
     res.reserve(SPELLER_HIDDEN);
 
-    // Listener initialization
+    // Reset the recurrent state for this utterance.
     listener.reset_state();
+    speller.reset_state();
     auto enc = listener.forward_pass(input);
 
     while (prev_token != 41) {
