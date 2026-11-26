@@ -6,22 +6,27 @@
 #include "listener.hpp"
 #include "speller.hpp"
 #include "vocabulary.hpp"
+#include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <vector>
 
 // LAS
 constexpr size_t MAX_LEN = 256;
 
 // Listener parameters
-constexpr size_t INPUT_SAMPLE = 96;
 constexpr size_t SAMPLE_SIZE = 40;
 constexpr size_t LISTENER_LAYERS = 4;
 constexpr size_t LISTENER_HIDDEN = 256;
@@ -34,16 +39,17 @@ constexpr size_t SPELLER_HIDDEN = 512;
 constexpr size_t MLP_HIDDEN = 256;
 
 template <std::floating_point T, bool TRAIN_ENABLED = true> class LAS {
+  using listener_t =
+      Listener<T, SAMPLE_SIZE, LISTENER_LAYERS, LISTENER_HIDDEN, TRAIN_ENABLED>;
+  using speller_t = Speller<T, SPELLER_LAYERS, SPELLER_HIDDEN,
+                            VOCABULARY.size(), TRAIN_ENABLED>;
+  using mlp_t = MLP<T, MLP_HIDDEN, 2 * SPELLER_HIDDEN, VOCABULARY.size()>;
+  using state_t = std::array<T, SPELLER_HIDDEN>;
+  using audio_t = std::span<const std::array<T, SAMPLE_SIZE>>;
 
-  Listener<T, INPUT_SAMPLE, SAMPLE_SIZE, LISTENER_LAYERS, LISTENER_HIDDEN,
-           TRAIN_ENABLED>
-      listener{};
-  Speller<T, SPELLER_LAYERS, SPELLER_HIDDEN, VOCABULARY.size(), TRAIN_ENABLED>
-      speller{};
-  MLP<T, MLP_HIDDEN, 2 * SPELLER_HIDDEN, VOCABULARY.size()> mlp{};
-
-  char prev_token = 42;
-  std::array<T, SPELLER_HIDDEN> prev_context{};
+  listener_t listener;
+  speller_t speller;
+  mlp_t mlp;
 
   static std::filesystem::path
   create_checkpoint(const std::filesystem::path &directory) {
@@ -86,13 +92,12 @@ template <std::floating_point T, bool TRAIN_ENABLED = true> class LAS {
     las_weights::load_network(mlp, checkpoint / las_weights::mlp_filename);
   }
 
-  std::array<T, VOCABULARY.size()>
-  char_mlp(const std::array<T, SPELLER_HIDDEN> &state,
-           const std::array<T, SPELLER_HIDDEN> &context) {
-    typename decltype(mlp)::in_t input;
+  static typename mlp_t::in_t character_input(const state_t &state,
+                                              const state_t &context) {
+    typename mlp_t::in_t input;
     auto context_begin = std::copy(state.begin(), state.end(), input.begin());
     std::copy(context.begin(), context.end(), context_begin);
-    return mlp.forward_pass(input);
+    return input;
   }
 
 public:
@@ -132,37 +137,93 @@ public:
     }
   }
 
-  std::string
-  inference(const std::array<std::array<T, SAMPLE_SIZE>, INPUT_SAMPLE> &input) {
-    prev_token = 42;
-    prev_context = {};
-    // Result initialization
-    std::string res{};
-    res.reserve(SPELLER_HIDDEN);
-
-    // Reset the recurrent state for this utterance.
+  std::string inference(audio_t input, size_t max_tokens = MAX_LEN - 1) {
+    if (input.empty())
+      throw std::invalid_argument("LAS requires at least one audio frame");
     listener.reset_state();
     speller.reset_state();
-    auto enc = listener.forward_pass(input);
+    const auto rows = listener.forward_pass(input);
 
-    size_t counter = 0;
-    while (prev_token != 41 && ++counter < MAX_LEN) {
-      std::array<T, SPELLER_HIDDEN> new_state =
-          speller.forward_pass(prev_token, prev_context);
-      std::array<T, SPELLER_HIDDEN> new_context = attend(new_state, enc);
-      std::array<T, VOCABULARY.size()> scores =
-          char_mlp(new_state, new_context);
-      size_t best = std::distance(
-          scores.begin(), std::max_element(scores.begin(), scores.end()));
-
+    char prev_token = token_to_index("<SOS>");
+    state_t context{};
+    std::string result;
+    for (size_t step = 0; step < max_tokens; ++step) {
+      const auto state = speller.forward_pass(prev_token, context);
+      context = attend(state, rows);
+      const auto scores = mlp.forward_pass(character_input(state, context));
+      const auto best = static_cast<size_t>(
+          std::max_element(scores.begin(), scores.end()) - scores.begin());
       if (best == token_to_index("<EOS>"))
         break;
+      result += VOCABULARY[best];
+      prev_token = static_cast<char>(best);
+    }
+    return result;
+  }
 
-      res += VOCABULARY[best];
-      prev_token = best;
-      prev_context = new_context;
+  // Train on one utterance, feeding the correct previous character each step.
+  T train_utterance(audio_t input, std::string_view transcript, T learning_rate)
+    requires(TRAIN_ENABLED)
+  {
+    if (input.empty())
+      throw std::invalid_argument("LAS requires at least one audio frame");
+    if (!std::isfinite(learning_rate) || learning_rate <= T{0})
+      throw std::invalid_argument("Learning rate must be finite and positive");
+    listener.reset_state();
+    speller.reset_state();
+    mlp.reset_state();
+    const auto rows = listener.forward_pass_train(input);
+
+    struct CharacterStep {
+      size_t target;
+      state_t state;
+      std::vector<T> attention_weights;
+    };
+
+    char prev_token = token_to_index("<SOS>");
+    state_t context{};
+    std::vector<CharacterStep> steps;
+    steps.reserve(transcript.size() + 1);
+    for (size_t i = 0; i <= transcript.size(); ++i) {
+      const size_t target = i == transcript.size()
+                                ? token_to_index("<EOS>")
+                                : token_to_index(transcript.substr(i, 1));
+      steps.push_back(
+          {target, speller.forward_pass_train(prev_token, context), {}});
+      auto &step = steps.back();
+      context = attend(step.state, rows, step.attention_weights);
+      mlp.forward_pass_train(character_input(step.state, context));
+      prev_token = static_cast<char>(target);
     }
 
-    return res;
+    // Each context is used by the character MLP and by the following LSTM step.
+    state_t context_gradient{};
+    typename speller_t::BackwardState speller_gradient{};
+    std::vector<typename listener_t::output_row> row_gradients(rows.size());
+    T loss = 0;
+    for (auto step = steps.rbegin(); step != steps.rend(); ++step) {
+      const auto character = mlp.backward_pass(step->target);
+      loss += character.loss;
+      for (size_t i = 0; i < SPELLER_HIDDEN; ++i)
+        context_gradient[i] += character.input_gradient[SPELLER_HIDDEN + i];
+
+      auto state_gradient =
+          attend_backward(step->state, rows, step->attention_weights,
+                          context_gradient, row_gradients);
+      for (size_t i = 0; i < SPELLER_HIDDEN; ++i)
+        state_gradient[i] += character.input_gradient[i];
+      context_gradient =
+          speller.backward_pass(state_gradient, speller_gradient);
+    }
+    if (!std::isfinite(loss))
+      throw std::runtime_error("LAS training produced a non-finite loss");
+
+    listener.backward_pass(row_gradients);
+    const T token_count = static_cast<T>(steps.size());
+    const T step_size = learning_rate / token_count;
+    listener.apply_gradient(step_size);
+    speller.apply_gradient(step_size);
+    mlp.apply_gradient(step_size);
+    return loss / token_count;
   }
 };

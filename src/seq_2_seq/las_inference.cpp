@@ -13,9 +13,8 @@ int main() {
 
   try {
     const auto frames = audio_decoder::decode_wav<double>(filename);
-    const auto input = audio_decoder::input_window<INPUT_SAMPLE>(frames);
     auto las = LAS<double, false>::load_weights();
-    std::cout << las->inference(input) << '\n';
+    std::cout << las->inference(frames) << '\n';
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

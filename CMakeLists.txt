@@ -123,3 +123,10 @@ target_compile_options(lstm_main PRIVATE
     -save-temps=obj
     -march=native
 )
+
+add_executable(las_train src/seq_2_seq/las_train.cpp)
+add_executable(las_inference src/seq_2_seq/las_inference.cpp)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(las_train PRIVATE $<$<CONFIG:Release>:-march=native>)
+  target_compile_options(las_inference PRIVATE $<$<CONFIG:Release>:-march=native>)
+endif()
